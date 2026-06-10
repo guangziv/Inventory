@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>光子四象限</title>
+<meta name="theme-color" content="#667eea">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI';background:#ffffff;padding-top:44px;min-height:100vh;}
+.header{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:6px 8px;}
+.header h1{flex:1;font-size:18px;font-weight:800;color:#ffffff;letter-spacing:1px;}
+.header-btn{margin-left:4px;padding:5px 8px;font-size:11px;background:rgba(255,255,255,.2);border:none;color:white;border-radius:6px;cursor:pointer;}
+.header-btn.active{background:rgba(255,255,255,.45) !important;}
+#settingsOverlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:450;display:none;}
+#settingsPanel{position:fixed;top:0;right:-240px;width:220px;height:auto;max-height:85vh;background:white;box-shadow:-4px 0 20px rgba(0,0,0,.15);padding:12px 10px;z-index:500;transition:right .25s ease;overflow-y:auto;}
+#settingsPanel.open{right:0;}
+.setting-item{display:flex;align-items:center;padding:6px 4px;font-size:12px;cursor:pointer;}
+.setting-item input{margin-right:6px;accent-color:#667eea;}
+#batchOverlay{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.35);display:none;pointer-events:none;}
+#batchBar{position:sticky;top:44px;z-index:350;background:white;border-bottom:1px solid #e0e0e0;padding:8px 10px;display:none;align-items:center;gap:8px;}
+#batchCount{font-size:13px;color:#333;flex:1;}
+.batch-btn{padding:6px 10px;font-size:12px;border:none;background:#f2f3f7;border-radius:6px;cursor:pointer;}
+.batch-btn:hover{background:#e5e7eb;}
+.quadrant-container{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));max-width:420px;margin:0 auto;gap:8px;padding:8px;min-height:calc(100vh - 48px);}
+.focus-mode .quadrant-container{grid-template-columns:repeat(2, minmax(0, 1fr)) !important;gap:8px;}
+.quadrant{background:white;border-radius:8px;display:flex;flex-direction:column;box-shadow:0 2px 6px rgba(0,0,0,.06);min-height:150px;padding:5px;}
+.quadrant-header{display:flex;align-items:center;border-bottom:1px solid #f0f0f0;margin-bottom:4px;padding-bottom:3px;}
+.quadrant-icon{width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;color:white;}
+.q1 .quadrant-icon{background:#00bcd4;}
+.q2 .quadrant-icon{background:#4caf50;}
+.q3 .quadrant-icon{background:#ffc107;}
+.q4 .quadrant-icon{background:#ff9800;}
+.task-count{margin-left:auto;background:#eee;padding:1px 5px;border-radius:6px;font-size:9px;color:#666;}
+.task-list{flex:1;min-height:80px;padding:1px;}
+.task-item{display:flex;align-items:center;background:#f9f9f0;border-radius:5px;padding:6px;margin-bottom:3px;cursor:pointer;border:1px solid #f0f0f0;position:relative;overflow:hidden;}
+.task-item.swipeable{touch-action:pan-y;}
+.task-item.dragging{opacity:1 !important;transform:scale(1) !important;background:#ffffff;box-shadow:0 4px 12px rgba(0,0,0,.15);}
+.task-item.done{opacity:.5;}
+.task-item.done .task-text{text-decoration:line-through;color:#888;}
+.task-item.highlighted{box-shadow:0 0 0 2px #667eea;background:#eef2ff;}
+.task-checkbox{width:16px;height:16px;accent-color:#667eea;margin-right:6px;}
+.task-content{flex:1;min-width:0;}
+.task-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;position:relative;pointer-events:none;}
+.task-note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:#666;margin-top:2px;pointer-events:none;}
+.task-item.has-more .task-text::after{content:" ▼";font-size:10px;color:#667eea;margin-left:4px;}
+.add-btn{width:100%;padding:6px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-top:3px;}
+#longPressMenu{position:fixed;z-index:300;background:white;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.25);min-width:150px;display:none;overflow:hidden;}
+#batchMovePanel{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;}
+#batchMovePanel > div{background:white;border-radius:12px;padding:16px;width:260px;}
+#batchMoveSelect{width:100%;padding:10px;border-radius:8px;border:1px solid #ddd;font-size:13px;}
+#batchMovePanel button{padding:9px;border:none;border-radius:8px;font-size:13px;cursor:pointer;}
+.input-modal{position:fixed;top:44px;left:0;right:0;bottom:auto;height:auto;max-height:60vh;background:white;border-radius:0 0 12px 12px;box-shadow:0 4px 20px rgba(0,0,0,.15);display:none;flex-direction:column;z-index:1000;}
+.input-modal.show{display:flex;}
+.input-content{padding:2px 14px 14px;width:100%;}
+.input-content input{width:100%;padding:9px;border:2px solid #e0e0f0;border-radius:7px;font-size:13px;margin:10px 0;}
+#taskNoteInput{width:100%;min-height:72px;resize:vertical;padding:9px;border:2px solid #e0e0f0;border-radius:7px;font-size:13px;margin:10px 0;}
+.input-buttons{display:flex;gap:8px;}
+.input-buttons button{flex:1;padding:9px;border:none;border-radius:7px;font-weight:600;cursor:pointer;}
+.btn-cancel{background:#f0f0f0;}
+.btn-confirm{background:#667eea;color:white;}
+#taskDetailModal{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:1200;display:none;align-items:center;justify-content:center;}
+#taskDetailModal .input-content{max-width:360px;background:white;border-radius:12px;padding:16px;width:92vw;box-sizing:border-box;}
+#detailText{font-size:15px;line-height:1.6;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;}
+#detailNote{margin-top:10px;padding:10px;background:#f5f7fa;border-radius:8px;font-size:13px;color:#555;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;max-height:50vh;overflow-y:auto;}
+#searchModal{position:fixed;top:44px;left:0;right:0;bottom:auto;height:auto;max-height:60vh;background:white;border-radius:0 0 12px 12px;box-shadow:0 4px 20px rgba(0,0,0,.15);display:none;flex-direction:column;z-index:1000;}
+#searchModal.show{display:flex;}
+#searchResultList{max-height:40vh;overflow-y:auto;}
+#tableViewPanel{position:fixed;bottom:0;left:0;right:0;max-height:60vh;background:white;border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.15);padding:16px;display:none;flex-direction:column;}
+#dataTable{width:100%;border-collapse:collapse;font-size:12px;}
+#dataTable th,#dataTable td{padding:8px;border:1px solid #ddd;}
+#dataTable th{background:#f0f2f5;position:sticky;top:0;}
+#focusBanner{display:none;background:linear-gradient(135deg,#facc15,#f59e0b);color:#1f2937;text-align:center;padding:6px;font-size:13px;font-weight:600;}
+#editBanner{display:none;background:linear-gradient(135deg,#38bdf8,#6366f1);color:white;text-align:center;padding:6px;font-size:13px;font-weight:600;}
+.task-item.today-highlight{background:linear-gradient(135deg,#fff9c4,#fffde7);border-left:4px solid #facc15;}
+.guide-container{max-width:640px;margin:0 auto;padding:24px 18px 60px;background:#ffffff;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;line-height:1.6;color:#333;}
+.guide-container h1{text-align:center;font-size:22px;margin-bottom:6px;}
+.guide-container .subtitle{text-align:center;color:#666;font-size:14px;margin-bottom:28px;}
+.guide-container h2{font-size:16px;margin-top:28px;margin-bottom:10px;color:#111;}
+.guide-container ul{padding-left:20px;margin:0;}
+.guide-container li{margin-bottom:8px;font-size:14px;}
+.guide-container .tip{background:#f0f4ff;border-left:4px solid #667eea;padding:10px 12px;margin-top:12px;font-size:13px;border-radius:6px;}
+.guide-container .highlight{color:#667eea;font-weight:600;}
+.guide-container .step{background:#f9fafb;border-radius:8px;padding:12px 14px;margin-bottom:10px;font-size:14px;}
+.guide-footer{margin-top:40px;text-align:center;font-size:12px;color:#888;}
+body.compact-mode .quadrant-container{max-width:none;width:100%;padding:2px;gap:2px;}
+body.compact-mode .quadrant{padding:2px;min-height:140px;border-radius:6px;border:1px solid #e5e7eb;box-shadow:none;}
+body.compact-mode .task-item{padding:3px 4px;margin-bottom:1px;border-radius:3px;}
+body.compact-mode .task-checkbox{width:13px;height:13px;margin-right:4px;}
+body.compact-mode .task-content{min-width:0;}
+body.compact-mode .task-text{font-size:13px;line-height:1.32;}
+body.compact-mode .task-note{font-size:10px;margin-top:1px;color:#666;}
+body.compact-mode .quadrant-header{padding-bottom:1px;margin-bottom:1px;}
+body.compact-mode .add-btn{padding:4px;font-size:10px;margin-top:1px;}
+#changelogModal{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:2000;display:none;align-items:center;justify-content:center;}
+#changelogModal .input-content{max-width:340px;background:white;border-radius:12px;padding:16px;max-height:70vh;display:flex;flex-direction:column;}
+#changelogContent{flex:1;overflow-y:auto;font-size:13px;line-height:1.6;}
+.changelog-item{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #eee;}
+.changelog-item:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+.changelog-version{font-weight:700;color:#667eea;margin-bottom:4px;}
+.changelog-date{font-size:11px;color:#888;margin-left:6px;}
+.watermark{position:fixed;inset:0;pointer-events:none;z-index:9999;display:flex;align-items:center;justify-content:center;font-size:40px;color:rgba(0,0,0,.08);transform:rotate(-30deg);user-select:none;}
+</style>
+</head>
+<body>
+<div class="watermark">光子四象限 · 仅供个人使用</div>
+<div id="batchOverlay"></div>
+<div id="settingsOverlay" onclick="toggleSettings()"></div>
+<div class="header">
+<h1>光子四象限</h1>
+<button class="header-btn" id="searchBtn" onclick="openSearchModal()">🔍</button>
+<button class="header-btn" id="focusModeBtn" onclick="toggleFocusMode()">🎯 专注今日</button>
+<button class="header-btn" id="editModeBtn" onclick="toggleSetting('enableEditMode')">✏️ 编辑模式</button>
+<button class="header-btn" onclick="toggleSettings()">⚙️</button>
+</div>
+<div id="focusBanner">🎯 专注模式开启中：仅显示今日任务</div>
+<div id="editBanner">✏️ 编辑模式已开启：单击任务直接进入编辑</div>
+<div id="searchModal" class="input-modal">
+<div class="input-content">
+<h3 style="margin:0 0 8px;">🔍 搜索任务</h3>
+<input id="searchInput" placeholder="输入关键词搜索..." autofocus>
+<div id="searchResultList"></div>
+<div class="input-buttons" style="margin-top:10px;">
+<button class="btn-cancel" onclick="closeSearchModal()">关闭</button>
+</div>
+</div>
+</div>
+<div id="taskDetailModal" onclick="if(event.target===this)hideTaskDetail()">
+<div class="input-content">
+<h3 style="margin:0 0 10px;">📄 任务详情</h3>
+<div id="detailText"></div>
+<div id="detailNote" style="margin-top:10px;"></div>
+<div class="input-buttons" style="margin-top:14px;display:flex;gap:8px;">
+<button class="btn-confirm" style="flex:1;" onclick="enterEditFromDetail()">✏️ 编辑</button>
+<button class="btn-confirm" style="flex:1;" onclick="hideTaskDetail()">✅ 退出查看</button>
+</div>
+</div>
+</div>
+<div id="taskEditModal" class="input-modal">
+<div class="input-content" style="max-width:360px;">
+<h3 style="margin:0 0 10px;">✏️ 编辑任务</h3>
+<label style="font-size:12px;color:#555;display:block;margin-bottom:4px;">任务内容</label>
+<textarea id="editTaskText" style="width:100%;min-height:60px;resize:vertical;margin:6px 0 12px;padding:9px;border:2px solid #e0e0f0;border-radius:7px;font-size:14px;"></textarea>
+<label style="font-size:12px;color:#555;display:block;margin-bottom:-4px;">备注</label>
+<textarea id="editTaskNote" style="width:100%;min-height:160px;max-height:65vh;height:auto;field-sizing:content;resize:vertical;overflow-y:auto;margin:6px 0 12px;padding:10px;border:2px solid #e0e0f0;border-radius:8px;font-size:13px;line-height:1.5;box-sizing:border-box;"></textarea>
+<div class="input-buttons" style="display:flex;gap:8px;">
+<button class="btn-confirm" style="flex:1;background:#fee2e2;color:#b91c1c;" onclick="deleteTaskFromEdit()">🗑 删除</button>
+<button class="btn-cancel" style="flex:1;" onclick="hideTaskEdit()">取消</button>
+<button class="btn-confirm" style="flex:1;" onclick="saveTaskEdit()">保存</button>
+</div>
+</div>
+</div>
+<div id="batchBar">
+<span id="batchCount">已选择 0 项</span>
+<button class="batch-btn" onclick="batchToggleSelection()">☑️ 选择</button>
+<button class="batch-btn" onclick="batchMovePrompt()">📦 移动</button>
+<button class="batch-btn" onclick="batchDeleteWithConfirm()">🗑 删除</button>
+<button class="batch-btn" onclick="toggleSetting('batchMode')">✅ 完成</button>
+</div>
+<div id="settingsPanel">
+<div id="feedbackCard" style="display:none;border-top:1px solid #eee;padding:6px 4px;margin-top:6px;">
+<div style="font-weight:600;font-size:12px;margin-bottom:6px;">💬 建议与反馈</div>
+<p style="font-size:11px;color:#666;line-height:1.5;margin-bottom:6px;">
+遇到问题或有改进建议？欢迎直接发邮件给我。<br>
+<span style="color:#888;">（您的任务数据仅保存在本地，不会发送给作者）</span>
+</p>
+<a href="mailto:guangzi618@qq.com?subject=【光子四象限】使用反馈&body=Hi，我有以下建议或问题：%0A%0A1.%0A2.%0A%0A-----------------%0A设备信息：%0A浏览器：%0A"
+style="display:block;width:100%;text-align:center;padding:8px;background:#667eea;color:white;border-radius:6px;font-size:12px;text-decoration:none;font-weight:600;">
+📧 发送邮件反馈
+</a>
+<div style="font-size:10px;color:#aaa;text-align:center;margin-top:4px;">通常会在 24–48 小时内回复</div>
+</div>
+<div style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14px;padding-bottom:8px;border-bottom:1px solid #eee;margin-bottom:8px;">
+<span>⚙️ 设置</span>
+<div style="display:flex;align-items:center;gap:6px;">
+<span id="versionTrigger" style="font-size:15px;color:#4338ca;font-weight:800;cursor:pointer;padding:4px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;letter-spacing:0.5px;">v3.0</span>
+<a href="javascript:void(0)" id="feedbackTrigger" style="font-size:12px;color:#667eea;text-decoration:none;font-weight:600;padding:2px 8px;border:1px solid #667eea;border-radius:12px;">反馈</a>
+</div>
+</div>
+<label class="setting-item" style="border-top:1px solid #eee">
+<input type="checkbox" id="compactModeToggle" onchange="toggleSetting('compactMode')"> 紧凑模式（更多内容）
+</label>
+<label class="setting-item" style="border-top:1px solid #eee">
+<input type="checkbox" id="hideDoneToggle" onchange="toggleSetting('hideCompleted')"> 显示已完成
+</label>
+<label class="setting-item" style="border-top:1px solid #eee">
+<input type="checkbox" id="batchModeToggle" onchange="toggleSetting('batchMode')"> 批量管理
+</label>
+<div style="border-top:1px solid #eee;padding:6px 4px;">
+<div style="font-weight:600;font-size:12px;margin-bottom:6px;">📖 使用说明</div>
+<button class="batch-btn" onclick="openGuide()" style="width:100%;margin-bottom:4px;">🧠 查看功能介绍</button>
+<button class="batch-btn" onclick="openSimpleGuide()" style="width:100%;">📘 极简使用指南</button>
+</div>
+<div style="border-top:1px solid #eee;padding:6px 4px;">
+<div style="font-weight:600;font-size:12px;margin-bottom:6px;">📊 表格视图</div>
+<button class="batch-btn" onclick="showTableView()" style="width:100%;">📋 打开表格视图</button>
+</div>
+<div style="border-top:1px solid #eee;padding:6px 4px;">
+<div style="font-weight:600;font-size:12px;margin-bottom:6px;">📤 数据导出</div>
+<button class="batch-btn" onclick="manualBackup()" style="width:100%;margin-bottom:4px;">💾 手动备份</button>
+<div style="display:flex;gap:4px;margin-bottom:4px;">
+<select id="exportRange" style="flex:1;padding:4px;border-radius:6px;border:1px solid #ddd;font-size:11px;">
+<option value="all">全部任务</option>
+<option value="undone">仅未完成</option>
+</select>
+<select id="exportFormat" style="flex:1;padding:4px;border-radius:6px;border:1px solid #ddd;font-size:11px;">
+<option value="xlsx">Excel（.xlsx）</option>
+<option value="csv">CSV</option>
+</select>
+</div>
+<button class="batch-btn" onclick="exportToLocal()" style="width:100%;margin-top:4px;">📤 导出文件</button>
+</div>
+<div style="border-top:1px solid #eee;padding:6px 4px;">
+<div style="font-weight:600;font-size:12px;margin-bottom:6px;">📥 数据导入 / 恢复</div>
+<input type="file" id="importFile" accept=".xlsx,.csv" style="width:100%;padding:4px;font-size:11px;margin-bottom:4px;">
+<button class="batch-btn" onclick="restoreBackup()" style="width:100%;background:#fee2e2;color:#b91c1c;">♻️ 恢复至上次备份</button>
+<div id="backupInfo" style="font-size:10px;color:#888;margin-top:4px;">最近备份：未记录</div>
+</div>
+</div>
+<div id="changelogModal" onclick="if(event.target===this)hideChangelog()">
+<div class="input-content" onclick="event.stopPropagation()">
+<h3 style="margin:0 0 10px;font-size:16px;">📜 更新说明</h3>
+<div id="changelogContent">
+<div class="changelog-item">
+<div><span class="changelog-version">v3.0</span><span class="changelog-date">2026-06-07</span></div>
+<ul>
+<li>✨ 新增「版本号」与「更新说明」入口</li>
+<li>🔧 优化拖拽手感，操作更跟手</li>
+<li>📧 反馈入口整合，体验更统一</li>
+<li>🎨 界面细节优化与稳定性提升</li>
+</ul>
+</div>
+<div class="changelog-item">
+<div><span class="changelog-version">v2.0</span><span class="changelog-date">2026-05-15</span></div>
+<ul>
+<li>🚀 发布「光子四象限」核心功能</li>
+<li>📱 支持 PWA，可添加到主屏幕</li>
+<li>📊 支持数据导出与备份恢复</li>
+</ul>
+</div>
+</div>
+<button class="btn-confirm" style="margin-top:12px;" onclick="hideChangelog()">我知道了</button>
+</div>
+</div>
+<div id="batchMovePanel">
+<div>
+<h3 style="margin:0 0 12px;font-size:14px;">批量移动</h3>
+<select id="batchMoveSelect">
+<option value="">请选择象限</option>
+<option value="q1">1️⃣ 紧急重要</option>
+<option value="q2">2️⃣ 紧急不重要</option>
+<option value="q3">3️⃣ 重要不紧急</option>
+<option value="q4">4️⃣ 不紧急不重要</option>
+</select>
+<div style="display:flex;gap:8px;margin-top:14px;">
+<button onclick="hideBatchMovePanel()" style="flex:1;background:#eee;">取消</button>
+<button onclick="confirmBatchMove()" style="flex:1;background:#667eea;color:white;">确定</button>
+</div>
+</div>
+</div>
+<div class="quadrant-container">
+<div class="quadrant q1" data-quadrant="q1">
+<div class="quadrant-header">
+<div class="quadrant-icon">1</div>
+<div class="quadrant-title" onclick="editTitle(this,'q1')">紧急重要 🔥⭐️</div>
+<div class="task-count">0</div>
+</div>
+<div class="task-list" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+<button class="add-btn" onclick="showInput('q1')">+ 添加</button>
+</div>
+<div class="quadrant q2" data-quadrant="q2">
+<div class="quadrant-header">
+<div class="quadrant-icon">2</div>
+<div class="quadrant-title" onclick="editTitle(this,'q2')">紧急不重要 🔥</div>
+<div class="task-count">0</div>
+</div>
+<div class="task-list" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+<button class="add-btn" onclick="showInput('q2')">+ 添加</button>
+</div>
+<div class="quadrant q3" data-quadrant="q3">
+<div class="quadrant-header">
+<div class="quadrant-icon">3</div>
+<div class="quadrant-title" onclick="editTitle(this,'q3')">重要不紧急 ⭐️</div>
+<div class="task-count">0</div>
+</div>
+<div class="task-list" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+<button class="add-btn" onclick="showInput('q3')">+ 添加</button>
+</div>
+<div class="quadrant q4" data-quadrant="q4">
+<div class="quadrant-header">
+<div class="quadrant-icon">4</div>
+<div class="quadrant-title" onclick="editTitle(this,'q4')">不紧急不重要</div>
+<div class="task-count">0</div>
+</div>
+<div class="task-list" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+<button class="add-btn" onclick="showInput('q4')">+ 添加</button>
+</div>
+</div>
+<div id="tableViewPanel">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+<h3>数据表格视图</h3>
+<button onclick="hideTableView()" style="background:none;border:none;font-size:24px;color:#999;">&times;</button>
+</div>
+<div style="display:flex;gap:8px;margin-bottom:10px;">
+<select id="tableFilter" style="flex:1;padding:4px;border-radius:6px;border:1px solid #ddd;font-size:12px;">
+<option value="all">全部</option>
+<option value="undone">未完成</option>
+</select>
+<select id="tableOptions" style="flex:1;padding:4px;border-radius:6px;border:1px solid #ddd;font-size:12px;">
+<option value="default">🛠 默认模式</option>
+<option value="all">📝 全部显示</option>
+<option value="ignoreNote">📄 忽略备注</option>
+</select>
+</div>
+<div style="overflow-y:auto;flex:1;"><table id="dataTable"></table></div>
+</div>
+<div class="input-modal" id="inputModal">
+<div class="input-content">
+<h3>添加新任务</h3>
+<input id="taskInput" placeholder="任务内容..." autofocus>
+<textarea id="taskNoteInput" placeholder="备注（可选）"></textarea>
+<div class="input-buttons">
+<button class="btn-cancel" onclick="hideInput()">取消</button>
+<button class="btn-confirm" onclick="addTask()">确定</button>
+</div>
+</div>
+</div>
+<div id="guideModal" onclick="closeGuideByBlank(event)" style="position:fixed;inset:0;background:#f3f4f6;display:none;align-items:center;justify-content:center;z-index:2000;">
+<div class="input-content" style="max-width:340px;text-align:center;">
+<h2 style="margin:0 0 6px;font-size:20px;">🧠 光子四象限</h2>
+<p style="font-size:13px;color:#555;margin-bottom:14px;">把任务放在正确的位置，而不是长长的列表里</p>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left;">
+<div style="background:#f5f7fa;padding:8px;border-radius:8px;"><div style="font-size:18px;margin-bottom:4px;">🧲</div><div style="font-weight:600;font-size:12px;">拖拽排序</div><div style="font-size:11px;color:#666;">所见即所得<br>自由调整优先级</div></div>
+<div style="background:#f5f7fa;padding:8px;border-radius:8px;"><div style="font-size:18px;margin-bottom:4px;">✅</div><div style="font-weight:600;font-size:12px;">单击完成</div><div style="font-size:11px;color:#666;">极简模式<br>不打断心流</div></div>
+<div style="background:#f5f7fa;padding:8px;border-radius:8px;"><div style="font-size:18px;margin-bottom:4px;">✏️</div><div style="font-weight:600;font-size:12px;">编辑模式</div><div style="font-size:11px;color:#666;">结构调整<br>不影响日常</div></div>
+<div style="background:#f5f7fa;padding:8px;border-radius:8px;"><div style="font-size:18px;margin-bottom:4px;">📁</div><div style="font-weight:600;font-size:12px;">数据掌控</div><div style="font-size:11px;color:#666;">本地存储<br>可导出 / 恢复</div></div>
+</div>
+<div style="margin-top:14px;font-size:11px;color:#888;">无需账号 · 本地存储 · 随时导出</div>
+<button class="btn-confirm" style="margin-top:12px;width:100%;" onclick="closeGuide()">我知道了</button>
+</div>
+</div>
+<div id="simpleGuideModal" style="position:fixed;inset:0;background:#f5f7fa;display:none;overflow-y:auto;z-index:2100;">
+<div class="guide-container">
+<h1>🧠 光子四象限</h1>
+<div class="subtitle">极简使用指南（新手版）</div>
+<h2>1️⃣ 这是什么？</h2>
+<p>帮你把事情分成 4 类，不再瞎忙：</p>
+<ul>
+<li><strong>Q1 紧急重要</strong>：今天必须做的（如：截止任务）</li>
+<li><strong>Q2 紧急不重要</strong>：可以拒绝或委托的（如：临时琐事）</li>
+<li><strong>Q3 重要不紧急</strong>：长期最有价值的（如：学习、健身）</li>
+<li><strong>Q4 不紧急不重要</strong>：尽量少做的（如：无目的刷手机）</li>
+</ul>
+<div class="tip">👉 记住一句话：<span class="highlight">多做 Q3，少做 Q4</span></div>
+<h2>2️⃣ 怎么用？（只需 3 步）</h2>
+<div class="step">✅ <strong>添加</strong>：点象限底部的 <strong>+ 添加</strong></div>
+<div class="step">✅ <strong>完成</strong>：单击任务，立刻打钩</div>
+<div class="step">✅ <strong>调整</strong>：按住任务上下拖，或拖到其他象限</div>
+<h2>3️⃣ 两个超好用的按钮</h2>
+<ul>
+<li><strong>🎯 专注今日</strong>：只看今天的任务</li>
+<li><strong>✏️ 编辑模式</strong>：想改文字或备注时再打开</li>
+</ul>
+<h2>4️⃣ 怎么放到手机桌面？</h2>
+<ul>
+<li><strong>iPhone：</strong>用 Safari 打开 → 点底部「分享」→「添加到主屏幕」</li>
+<li><strong>安卓：</strong>用 Edge 打开 → 点右下角菜单 →「添加至手机」</li>
+</ul>
+<div class="guide-footer">光子四象限 · 本地优先 · 无需联网</div>
+<button class="btn-confirm" style="margin-top:24px;width:100%;" onclick="closeSimpleGuide()">返回</button>
+</div>
+</div>
+<script>
+const APP_VERSION='3.0';let tasks={q1:[],q2:[],q3:[],q4:[]};let activeHighlightedTask=null;let settings={enableEditMode:false,hideCompleted:true,batchMode:false,compactMode:false};const quadrantTitles={q1:'紧急重要 🔥⭐️',q2:'紧急不重要 🔥',q3:'重要不紧急 ⭐️',q4:'不紧急不重要'};const quadLabels={q1:{text:'第 1 象限',short:'Q1',color:'#00bcd4'},q2:{text:'第 2 象限',short:'Q2',color:'#4caf50'},q3:{text:'第 3 象限',short:'Q3',color:'#ffc107'},q4:{text:'第 4 象限',short:'Q4',color:'#ff9800'}};let focusMode=false,currentQuadrant=null,searchOpen=false,editingTask=null,editingQuadrant=null,taskClickLock=false;const tableConfig={filter:'all',showIndex:false,showNote:false,showQuadrant:false};
+function safeParse(key,fallback){try{const v=localStorage.getItem(key);if(!v)return fallback;const parsed=JSON.parse(v);if(Array.isArray(fallback)&&!Array.isArray(parsed)){localStorage.removeItem(key);return fallback;}return parsed;}catch{localStorage.removeItem(key);return fallback;}}
+function handleTaskClick_FinalFix(task,taskEl,e){if(taskClickLock)return;taskClickLock=true;setTimeout(()=>{taskClickLock=false},180);if(!taskEl||!e)return;if(e.target.closest('input[type="checkbox"]'))return;if(settings.enableEditMode){e.preventDefault();e.stopPropagation();openTaskEdit(task,taskEl.closest('.quadrant')?.dataset.quadrant);return;}if(settings.batchMode)return;e.preventDefault();e.stopPropagation();showTaskDetail(task,taskEl.closest('.quadrant')?.dataset.quadrant);}
+function toggleFocusMode(){focusMode=!focusMode;const btn=document.getElementById('focusModeBtn');const banner=document.getElementById('focusBanner');if(btn)btn.innerText=focusMode?'🎯 退出专注':'🎯 专注今日';if(banner)banner.style.display=focusMode?'block':'none';document.body.classList.toggle('focus-mode',focusMode);renderAll();}
+function isToday(task){if(!task)return false;if(task.focus)return true;if(!task.created)return false;const t=new Date(task.created),n=new Date();return t.getFullYear()===n.getFullYear()&&t.getMonth()===n.getMonth()&&t.getDate()===n.getDate();}
+function toggleSetting(key){if(!key)return;if(key==='compactMode'){settings.compactMode=!settings.compactMode;document.body.classList.toggle('compact-mode',settings.compactMode);localStorage.setItem('quadrantSettings',JSON.stringify(settings));return;}settings[key]=!settings[key];if(key==='batchMode'&&settings.batchMode)settings.enableEditMode=false;if(key==='enableEditMode'&&settings.enableEditMode)settings.batchMode=false;const editBtn=document.getElementById('editModeBtn');const editBanner=document.getElementById('editBanner');const batchBar=document.getElementById('batchBar');const batchOverlay=document.getElementById('batchOverlay');if(editBtn){editBtn.innerText=settings.enableEditMode?'✏️ 退出编辑':'✏️ 编辑模式';editBtn.classList.toggle('active',settings.enableEditMode);}if(editBanner)editBanner.style.display=settings.enableEditMode?'block':'none';if(batchBar)batchBar.style.display=settings.batchMode?'flex':'none';if(batchOverlay)batchOverlay.style.display=settings.batchMode?'block':'none';localStorage.setItem('quadrantSettings',JSON.stringify(settings));renderAll();closePanels();}
+function toggleSettings(){const panel=document.getElementById('settingsPanel');const overlay=document.getElementById('settingsOverlay');if(!panel||!overlay)return;panel.classList.toggle('open');overlay.style.display=panel.classList.contains('open')?'block':'none';}
+function closePanels(){const panel=document.getElementById('settingsPanel');const overlay=document.getElementById('settingsOverlay');if(panel)panel.classList.remove('open');if(overlay)overlay.style.display='none';}
+function loadTasks(){const parsed=safeParse('quadrantTasks_final',{q1:[],q2:[],q3:[],q4:[]});tasks={q1:Array.isArray(parsed.q1)?parsed.q1:[],q2:Array.isArray(parsed.q2)?parsed.q2:[],q3:Array.isArray(parsed.q3)?parsed.q3:[],q4:Array.isArray(parsed.q4)?parsed.q4:[]};renderAll();loadBackupInfo();}
+function renderAll(){'q1','q2','q3','q4'.forEach(renderTasks);}
+function saveTasks(){localStorage.setItem('quadrantTasks_final',JSON.stringify(tasks));}
+function renderTasks(q){const quadrantEl=document.querySelector(`[data-quadrant="${q}"]`);if(!quadrantEl)return;const el=quadrantEl.querySelector('.task-list');const cnt=quadrantEl.querySelector('.task-count');if(!el||!cnt)return;el.innerHTML='';let list=Array.isArray(tasks[q])?tasks[q]:[];if(settings.hideCompleted)list=list.filter(t=>t&&!t.done);if(focusMode)list=list.filter(isToday);list.forEach(task=>{if(!task||!task.id)return;const d=document.createElement('div');d.className='task-item'+(task.done?' done':'')+(isToday(task)?' today-highlight':'');d.draggable=true;d.dataset.id=task.id;d.classList.add('swipeable');let startX=0;d.ontouchstart=e=>{if(settings.enableEditMode&&e.touches.length>0)startX=e.touches[0].clientX;};d.ontouchend=e=>{if(!settings.enableEditMode||!e.changedTouches.length)return;const diff=startX-e.changedTouches[0].clientX;if(diff>45){task.focus=!task.focus;saveTasks();renderTasks(q);}};if(settings.batchMode){d.innerHTML=`<input type="checkbox" class="batch-check" style="margin-right:6px;"><div class="task-content"><div class="task-text">${task.text||''}${task.focus?' 🎯':''}</div>${task.note?`<div class="task-note">📝 ${task.note}</div>`:''}</div>`;const cb=d.querySelector('.batch-check');if(cb)cb.onchange=updateBatchCount;}else{d.innerHTML=`<input type="checkbox" class="task-checkbox" ${task.done?'checked':''}><div class="task-content"><div class="task-text">${task.text||''}${task.focus?' 🎯':''}</div>${task.note?`<div class="task-note">📝 ${task.note}</div>`:''}</div>`;const checkbox=d.querySelector('.task-checkbox');if(checkbox){checkbox.onchange=()=>{task.done=checkbox.checked;saveTasks();renderTasks(q);};}}d.ondragstart=e=>{if(!e)return;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',task.id);d.classList.add('dragging');};d.ondragend=()=>{d.classList.remove('dragging');};d.onclick=function(e){handleTaskClick_FinalFix(task,this,e);};el.appendChild(d);requestAnimationFrame(()=>{const textEl=d.querySelector('.task-text');if(textEl&&textEl.scrollWidth>textEl.clientWidth)d.classList.add('has-more');});});cnt.textContent=list.length;if(settings.batchMode)updateBatchCount();}
+function allowDrop(e){if(!e)return;e.preventDefault();const targetQuadrantEl=e.currentTarget.closest('.quadrant');if(targetQuadrantEl)targetQuadrantEl.classList.add('drag-over');}
+function drop(e){if(!e)return;e.preventDefault();const targetQuadrantEl=e.currentTarget.closest('.quadrant');if(!targetQuadrantEl)return;targetQuadrantEl.classList.remove('drag-over');const tq=targetQuadrantEl.dataset.quadrant;const taskId=Number(e.dataTransfer?.getData('text/plain'));if(isNaN(taskId))return;const sq=Object.keys(tasks).find(q=>Array.isArray(tasks[q])&&tasks[q].some(t=>t&&t.id===taskId));if(!sq)return;const si=tasks[sq].findIndex(t=>t&&t.id===taskId);if(si===-1)return;const[task]=tasks[sq].splice(si,1);const targetListEl=targetQuadrantEl.querySelector('.task-list');if(!targetListEl)return;const els=Array.from(targetListEl.querySelectorAll(':scope > .task-item'));let idx=els.length;if(els.length>0){for(let i=0;i<els.length;i++){if(els[i].dataset.id===String(taskId))continue;const r=els[i].getBoundingClientRect();if(e.clientY<r.top+r.height/2){idx=i;break;}}}tasks[tq].splice(idx,0,task);renderTasks(sq);renderTasks(tq);saveTasks();}
+function updateBatchCount(){const checks=document.querySelectorAll('.batch-check');const countEl=document.getElementById('batchCount');if(countEl)countEl.innerText=`已选择 ${checks.length} 项`;}
+function batchToggleSelection(){const checks=document.querySelectorAll('.batch-check');const allChecked=[...checks].every(cb=>cb.checked);checks.forEach(cb=>{cb.checked=!allChecked;});updateBatchCount();}
+function batchDeleteWithConfirm(){const checks=document.querySelectorAll('.batch-check:checked');if(!checks.length){alert('请先勾选要删除的任务');return;}if(confirm(`确定要删除选中的 ${checks.length} 个任务吗？此操作不可恢复。`)){checks.forEach(cb=>{const id=+cb.closest('.task-item')?.dataset.id;if(!id)return;Object.keys(tasks).forEach(q=>{if(Array.isArray(tasks[q]))tasks[q]=tasks[q].filter(t=>t&&t.id!==id);});});saveTasks();renderAll();}}
+function batchMovePrompt(){const checks=document.querySelectorAll('.batch-check:checked');if(!checks.length)return;const panel=document.getElementById('batchMovePanel');if(panel)panel.style.display='flex';}
+function hideBatchMovePanel(){const panel=document.getElementById('batchMovePanel');if(panel)panel.style.display='none';}
+function confirmBatchMove(){const select=document.getElementById('batchMoveSelect');if(!select)return;const tq=select.value;if(!tq)return;const checks=document.querySelectorAll('.batch-check:checked');checks.forEach(cb=>{const id=+cb.closest('.task-item')?.dataset.id;if(!id)return;Object.keys(tasks).forEach(q=>{const task=Array.isArray(tasks[q])?tasks[q].find(t=>t&&t.id===id):null;if(task){tasks[q]=tasks[q].filter(t=>t&&t.id!==id);tasks[tq].push(task);}});});saveTasks();renderAll();hideBatchMovePanel();}
+function openSearchModal(){const modal=document.getElementById('searchModal');const btn=document.getElementById('searchBtn');if(searchOpen){closeSearchModal();return;}if(modal)modal.classList.add('show');if(btn)btn.classList.add('active');searchOpen=true;const input=document.getElementById('searchInput');if(input){input.value='';setTimeout(()=>input.focus(),100);}const resultBox=document.getElementById('searchResultList');if(resultBox)resultBox.innerHTML='';}
+function closeSearchModal(){const modal=document.getElementById('searchModal');const btn=document.getElementById('searchBtn');if(modal)modal.classList.remove('show');if(btn)btn.classList.remove('active');searchOpen=false;}
+document.getElementById('searchInput')?.addEventListener('input',function(){const kw=this.value.trim().toLowerCase();const resultBox=document.getElementById('searchResultList');if(!resultBox)return;resultBox.innerHTML='';if(!kw)return;let hasResult=false;Object.keys(tasks).forEach(q=>{if(!Array.isArray(tasks[q]))return;tasks[q].forEach(t=>{if(!t)return;if(settings.hideCompleted&&t.done)return;if((t.text||'').toLowerCase().includes(kw)||(t.note||'').toLowerCase().includes(kw)){hasResult=true;const div=document.createElement('div');div.className='task-item';div.innerHTML=`<div style="flex:1;"><div style="display:flex;align-items:center;gap:6px;"><div class="task-text">${highlight(t.text||'',kw)}</div><span style="padding:2px 8px;font-size:10px;font-weight:600;border-radius:12px;background:${quadLabels[q].color};color:white;">${quadLabels[q].short}</span></div>${t.note?`<div class="task-note">📝 ${highlight(t.note,kw)}</div>`:''}</div>`;div.onclick=()=>{closeSearchModal();scrollToTask(q,t.id);};resultBox.appendChild(div);}});});if(!hasResult)resultBox.innerHTML=`<div style="padding:16px;text-align:center;color:#888;">🔍 未找到相关任务</div>`;});
+function highlight(text,kw){if(!kw)return text||'';const reg=new RegExp(`(${kw})`,'gi');return(text||'').replace(reg,'<mark style="background:#ffe58f;">$1</mark>');}
+function scrollToTask(quadrant,taskId){const quadrantEl=document.querySelector(`[data-quadrant="${quadrant}"]`);if(!quadrantEl)return;if(activeHighlightedTask)activeHighlightedTask.classList.remove('highlighted');let taskEl=quadrantEl.querySelector(`[data-id="${taskId}"]`);if(!taskEl){const originalHide=settings.hideCompleted;const originalFocus=focusMode;settings.hideCompleted=false;focusMode=false;renderTasks(quadrant);taskEl=quadrantEl.querySelector(`[data-id="${taskId}"]`);settings.hideCompleted=originalHide;focusMode=originalFocus;renderTasks(quadrant);}if(!taskEl)return;quadrantEl.scrollIntoView({behavior:'smooth',block:'center'});taskEl.classList.add('highlighted');activeHighlightedTask=taskEl;}
+function showTaskDetail(task,quadrant){if(!task)return;editingTask=task;editingQuadrant=quadrant;const detailTextEl=document.getElementById('detailText');const detailNoteEl=document.getElementById('detailNote');if(detailTextEl){if((task.text||'').length>60){detailTextEl.textContent='（任务概要较长，已移至下方备注区）';detailNoteEl.textContent=task.text||'';if(task.note)detailNoteEl.textContent+='\n\n-----\n'+task.note;}else{detailTextEl.textContent=task.text||'';detailNoteEl.textContent=task.note||'（无备注）';}}const modal=document.getElementById('taskDetailModal');if(modal)modal.style.display='flex';}
+function hideTaskDetail(){const modal=document.getElementById('taskDetailModal');if(modal)modal.style.display='none';}
+function enterEditFromDetail(){if(!editingTask||!editingQuadrant)return;hideTaskDetail();openTaskEdit(editingTask,editingQuadrant);}
+function openTaskEdit(task,quadrant){if(!task||!quadrant)return;editingTask=task;editingQuadrant=quadrant;const textEl=document.getElementById('editTaskText');const noteEl=document.getElementById('editTaskNote');if(textEl)textEl.value=task.text||'';if(noteEl)noteEl.value=task.note||'';const modal=document.getElementById('taskEditModal');if(modal)modal.classList.add('show');}
+function saveTaskEdit(){if(!editingTask)return;const textEl=document.getElementById('editTaskText');const noteEl=document.getElementById('editTaskNote');if(textEl)editingTask.text=textEl.value.trim();if(noteEl)editingTask.note=noteEl.value.trim();saveTasks();renderAll();hideTaskEdit();}
+function deleteTaskFromEdit(){if(!editingTask||!editingQuadrant)return;if(!confirm('确定要删除该任务吗？此操作不可恢复。'))return;if(Array.isArray(tasks[editingQuadrant])){tasks[editingQuadrant]=tasks[editingQuadrant].filter(t=>t&&t.id!==editingTask.id);saveTasks();renderAll();}hideTaskEdit();}
+function hideTaskEdit(){const modal=document.getElementById('taskEditModal');if(modal)modal.classList.remove('show');editingTask=null;editingQuadrant=null;}
+function showTableView(){const filterEl=document.getElementById('tableFilter');if(filterEl)tableConfig.filter=filterEl.value||'all';let h='<thead><tr>';if(tableConfig.showIndex)h+='<th>编号</th>';if(tableConfig.showQuadrant)h+='<th>象限</th>';h+='<th>任务内容</th>';if(tableConfig.showNote)h+='<th>备注</th>';h+='<th>状态</th><th>创建时间</th></tr></thead><tbody>';const n=quadrantTitles;Object.keys(tasks).forEach(k=>{if(!Array.isArray(tasks[k]))return;tasks[k].forEach((t,i)=>{if(!t)return;if(tableConfig.filter==='undone'&&t.done)return;const created=new Date(t.created);const dateStr=isNaN(created.getTime())?'-':`${created.getFullYear()}-${String(created.getMonth()+1).padStart(2,'0')}-${String(created.getDate()).padStart(2,'0')}`;h+='<tr>';if(tableConfig.showIndex)h+=`<td>${i+1}</td>`;if(tableConfig.showQuadrant)h+=`<td>${n[k]}</td>`;h+=`<td style="word-break:break-word">${t.text||''}</td>`;if(tableConfig.showNote)h+=`<td>${t.note||''}</td>`;h+=`<td>${t.done?'已完成':'未完成'}</td><td>${dateStr}</td></tr>`;});});const table=document.getElementById('dataTable');if(table)table.innerHTML=h+'</tbody>';const panel=document.getElementById('tableViewPanel');if(panel)panel.style.display='flex';}
+document.getElementById('tableFilter')?.addEventListener('change',function(){tableConfig.filter=this.value;showTableView();});
+document.getElementById('tableOptions')?.addEventListener('change',function(){const v=this.value;if(v==='default'){tableConfig.showIndex=false;tableConfig.showNote=false;tableConfig.showQuadrant=false;}else if(v==='all'){tableConfig.showIndex=true;tableConfig.showNote=true;tableConfig.showQuadrant=true;}else if(v==='ignoreNote'){tableConfig.showIndex=true;tableConfig.showNote=false;tableConfig.showQuadrant=true;}showTableView();});
+function hideTableView(){const panel=document.getElementById('tableViewPanel');if(panel)panel.style.display='none';}
+function getExportDate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function getExportData(){const range=document.getElementById('exportRange')?.value||'all';const list=[];const qn=quadrantTitles;list.push({象限:'⚠️ 免责声明',任务内容:'本数据由本地个人工具生成，仅供个人参考，不具备法律效力。',备注:'生成时间：'+new Date().toLocaleString(),状态:'',创建时间:''});list.push({象限:'象限',任务内容:'任务内容',备注:'备注',状态:'状态',创建时间:'创建时间'});Object.keys(tasks).forEach(k=>{if(!Array.isArray(tasks[k]))return;tasks[k].forEach(t=>{if(!t)return;if(range==='undone'&&t.done)return;list.push({象限:qn[k],任务内容:t.text||'',备注:t.note||'',状态:t.done?'已完成':'未完成',创建时间:new Date(t.created).toLocaleDateString()});});});return list;}
+function exportToLocal(){const format=document.getElementById('exportFormat')?.value||'xlsx';const data=getExportData();if(!data.length)return;if(format==='xlsx'){const ws=XLSX.utils.json_to_sheet(data,{skipHeader:true});ws['!cols']=[{wch:20},{wch:50},{wch:30},{wch:15},{wch:20}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'任务数据');XLSX.writeFile(wb,`光子四象限_${getExportDate()}.xlsx`);}if(format==='csv'){const ws=XLSX.utils.json_to_sheet(data,{skipHeader:true});const csv=XLSX.utils.sheet_to_csv(ws);const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`光子四象限_${getExportDate()}.csv`;a.click();}}
+function saveBackup(type){const now=new Date();const timeStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;localStorage.setItem('quadrantTasks_backup',JSON.stringify({data:tasks,meta:{type,time:timeStr}}));}
+function manualBackup(){saveBackup('manual');loadBackupInfo();}
+function restoreBackup(){const raw=localStorage.getItem('quadrantTasks_backup');if(!raw)return;try{const backup=JSON.parse(raw);tasks=backup.data;saveTasks();renderAll();loadBackupInfo();}catch{localStorage.removeItem('quadrantTasks_backup');}}
+function loadBackupInfo(){const raw=localStorage.getItem('quadrantTasks_backup');const el=document.getElementById('backupInfo');if(!el)return;if(!raw){el.innerText='最近备份：未记录';return;}try{const backup=JSON.parse(raw);el.innerHTML=`最近备份：<strong>${backup.meta.time}</strong>（${backup.meta.type==='manual'?'手动':'自动'}）`;}catch{el.innerText='最近备份：数据异常';}}
+function importFromLocal(file){if(!file)return;saveBackup('auto');const reader=new FileReader();reader.onload=e=>{try{const workbook=XLSX.read(e.target.result,{type:'array'});const sheet=workbook.Sheets[workbook.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(sheet);tasks={q1:[],q2:[],q3:[],q4:[]};rows.forEach(row=>{const quadName=row['象限']||'';let target=null;if(quadName.includes('紧急重要'))target='q1';else if(quadName.includes('紧急不重要'))target='q2';else if(quadName.includes('重要不紧急'))target='q3';else if(quadName.includes('不紧急不重要'))target='q4';else return;tasks[target].push({id:Date.now()+Math.random(),text:row['任务内容']||'',note:row['备注']||'',done:row['状态']==='已完成',created:row['创建时间']?new Date(row['创建时间']).toISOString():new Date().toISOString()});});saveTasks();renderAll();loadBackupInfo();}catch{restoreBackup();}};reader.readAsArrayBuffer(file);}
+document.getElementById('importFile')?.addEventListener('change',function(){importFromLocal(this.files[0]);this.value='';});
+function openGuide(){const modal=document.getElementById('guideModal');if(modal)modal.style.display='flex';closePanels();}
+function closeGuide(){const modal=document.getElementById('guideModal');if(modal)modal.style.display='none';localStorage.setItem('welcomeShown','true');}
+function closeGuideByBlank(e){if(e.target!==e.currentTarget)return;closeGuide();}
+function openSimpleGuide(){const modal=document.getElementById('simpleGuideModal');if(modal)modal.style.display='block';closePanels();}
+function closeSimpleGuide(){const modal=document.getElementById('simpleGuideModal');if(modal)modal.style.display='none';}
+function showInput(q){currentQuadrant=q;const input=document.getElementById('taskInput');const note=document.getElementById('taskNoteInput');const modal=document.getElementById('inputModal');if(input)input.value='';if(note)note.value='';if(modal)modal.classList.add('show');if(input)setTimeout(()=>input.focus(),100);}
+function hideInput(){const modal=document.getElementById('inputModal');if(modal)modal.classList.remove('show');}
+function addTask(){const input=document.getElementById('taskInput');const note=document.getElementById('taskNoteInput');if(!input||!currentQuadrant)return;const text=input.value.trim();if(!text)return;const noteText=note?note.value.trim():'';if(Array.isArray(tasks[currentQuadrant])){tasks[currentQuadrant].push({id:Date.now()+Math.random(),text,note:noteText,done:false,created:new Date().toISOString(),focus:false});}saveTasks();renderTasks(currentQuadrant);hideInput();}
+function editTitle(el,q){if(!settings.enableEditMode||!el)return;const v=prompt('修改象限名称',quadrantTitles[q]);if(v){quadrantTitles[q]=v;el.innerText=v;}}
+document.getElementById('taskInput')?.addEventListener('keypress',e=>{if(e.key==='Enter')addTask();});
+document.getElementById('inputModal')?.addEventListener('click',e=>{if(e.target===e.currentTarget)hideInput();});
+document.getElementById('feedbackTrigger').onclick=function(e){e.preventDefault();const card=document.getElementById('feedbackCard');if(card)card.style.display=card.style.display==='none'?'block':'none';};
+function showChangelog(){const modal=document.getElementById('changelogModal');if(modal)modal.style.display='flex';}
+function hideChangelog(){const modal=document.getElementById('changelogModal');if(modal)modal.style.display='none';}
+document.getElementById('versionTrigger').onclick=showChangelog;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTaskDetail();closeSearchModal();}});
+document.addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('keydown',e=>{if(e.key==='F12'||(e.ctrlKey&&e.key==='U')||(e.ctrlKey&&e.shiftKey&&e.key==='I')){e.preventDefault();}});
+if(!location.href.includes('github.io')&&!location.href.startsWith('file://')){console.warn('⚠️ 当前并非官方发布渠道，请前往 GitHub 获取正版');}
+loadTasks();
+</script>
+<div style="text-align:center;font-size:12px;color:#888;padding:10px;">
+  官方版本 ·
+  <a href="https://github.com/你的账号/guangzi-quadrant" target="_blank">
+    获取最新版
+  </a>
+</div>
+</body>
+</html>
