@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>光子盘点 · 微信专版</title>
+
+<!-- ZXing 扫码库 -->
+<script src="https://unpkg.com/@ericm/zing@0.0.14/dist/zing.min.js"></script>
+
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 12px;
+  background: #f4f4f4;
+  margin: 0;
+}
+h2, h3 { margin: 10px 0; }
+button {
+  width: 100%;
+  padding: 14px;
+  margin: 8px 0;
+  font-size: 16px;
+  border-radius: 8px;
+  border: none;
+  background: #07c160; /* 微信绿 */
+  color: #fff;
+  box-sizing: border-box;
+}
+button.secondary {
+  background: #1677ff;
+}
+input {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0;
+  font-size: 16px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+}
+video {
+  width: 100%;
+  border-radius: 8px;
+  display: none; /* 默认隐藏 */
+  background: #000;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  font-size: 13px;
+  margin-top: 10px;
+}
+th, td {
+  border: 1px solid #eee;
+  padding: 6px;
+  text-align: center;
+}
+img {
+  max-width: 80px;
+  border-radius: 4px;
+}
+#result { display: none; margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px; }
+#statusTip {
+  padding: 10px;
+  margin-bottom: 10px;
+  background: #fff3cd;
+  color: #856404;
+  border-radius: 6px;
+  font-size: 14px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>📦 光子盘点工具</h2>
+
+<!-- 微信环境提示 -->
+<div id="statusTip">
+  ⚠️ 若无法唤起摄像头，请点击右上角菜单，选择「在浏览器中打开」
+</div>
+
+<button onclick="startScan()">📷 扫码</button>
+<video id="video"></video>
+
+<div id="result">
+  <p><b>SKU：</b><span id="sku"></span></p>
+  <input type="number" id="qty" placeholder="请输入实盘数量" />
+  <input type="file" accept="image/*" capture="environment" id="photo" />
+  <img id="preview" />
+  <button class="secondary" onclick="save()">💾 保存</button>
+</div>
+
+<h3>盘点记录</h3>
+<button onclick="toggleTableView()">📊 表格视图</button>
+<button onclick="exportData()">⬇️ 导出 JSON</button>
+
+<table>
+  <thead>
+    <tr><th>SKU</th><th>数量</th><th>照片</th></tr>
+  </thead>
+  <tbody id="list"></tbody>
+</table>
+
+<div id="tableView" style="display:none;">
+  <table>
+    <thead>
+      <tr><th>SKU</th><th>数量</th><th>照片</th><th>操作</th></tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<script>
+let currentSKU = '';
+let codeReader = null;
+const dbName = 'inventoryDB';
+let db;
+
+/* ===== IndexedDB 初始化 ===== */
+const req = indexedDB.open(dbName, 1);
+req.onupgradeneeded = e => {
+  db = e.target.result;
+  db.createObjectStore('records', { keyPath: 'sku' });
+};
+req.onsuccess = e => {
+  db = e.target.result;
+  loadList();
+};
+
+/* ===== 核心：扫码（微信兼容版） ===== */
+async function startScan() {
+  const video = document.getElementById('video');
+  
+  // 尝试主动请求摄像头权限（微信有时会在这里拦截）
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" } // 强制后置摄像头
+    });
+    
+    // 如果成功，交给 ZXing 处理
+    video.style.display = 'block';
+    video.srcObject = stream;
+    video.play();
+
+    codeReader = new ZXing.BrowserMultiFormatReader();
+    codeReader.decodeFromVideoElement(video, (result, err) => {
+      if (result) {
+        currentSKU = result.getText();
+        document.getElementById('sku').innerText = currentSKU;
+        document.getElementById('result').style.display = 'block';
+        document.getElementById('qty').focus();
+        stopScan();
+      }
+    });
+
+  } catch (error) {
+    console.error("摄像头调用失败:", error);
+    // 微信环境最常见的失败处理方式
+    alert('无法调用摄像头。\n请确认已允许权限，或点击右上角选择在浏览器中打开。');
+    video.style.display = 'none';
+  }
+}
+
+function stopScan() {
+  const video = document.getElementById('video');
+  if (codeReader) codeReader.reset();
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(track => track.stop());
+  }
+  video.style.display = 'none';
+}
+
+/* ===== 拍照压缩 ===== */
+document.getElementById('photo').onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    let w = img.width, h = img.height;
+    const MAX = 800;
+    if (w > h && w > MAX) { h *= MAX / w; w = MAX; }
+    else if (h > MAX) { w *= MAX / h; h = MAX; }
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    document.getElementById('preview').src = canvas.toDataURL('image/jpeg', 0.6);
+  };
+  img.src = URL.createObjectURL(file);
+};
+
+/* ===== 保存 ===== */
+function save() {
+  const qty = document.getElementById('qty').value;
+  if (!currentSKU || !qty) { alert('请扫码并输入数量'); return; }
+  
+  const tx = db.transaction('records', 'readwrite');
+  tx.objectStore('records').put({
+    sku: currentSKU,
+    qty,
+    photo: document.getElementById('preview').src
+  });
+  tx.oncomplete = () => {
+    alert('保存成功');
+    document.getElementById('qty').value = '';
+    document.getElementById('preview').src = '';
+    document.getElementById('photo').value = '';
+    document.getElementById('result').style.display = 'none';
+    loadList();
+  };
+}
+
+/* ===== 列表 & 表格 ===== */
+function loadList() {
+  if (!db) return;
+  const tx = db.transaction('records', 'readonly');
+  tx.objectStore('records').getAll().onsuccess = e => {
+    const data = e.target.result;
+    const list = document.getElementById('list');
+    const table = document.getElementById('tableBody');
+    list.innerHTML = ''; table.innerHTML = '';
+    data.forEach(r => {
+      list.innerHTML += `<tr><td>${r.sku}</td><td>${r.qty}</td><td><img src="${r.photo}"></td></tr>`;
+      table.innerHTML += `<tr><td>${r.sku}</td><td>${r.qty}</td><td><img src="${r.photo}"></td><td><button onclick="del('${r.sku}')">删除</button></td></tr>`;
+    });
+  };
+}
+
+function del(sku) {
+  if (!confirm('删除 ' + sku + '？')) return;
+  const tx = db.transaction('records', 'readwrite');
+  tx.objectStore('records').delete(sku);
+  tx.oncomplete = loadList;
+}
+
+function toggleTableView() {
+  const v = document.getElementById('tableView');
+  v.style.display = v.style.display === 'none' ? 'block' : 'none';
+}
+
+function exportData() {
+  const tx = db.transaction('records', 'readonly');
+  tx.objectStore('records').getAll().onsuccess = e => {
+    const blob = new Blob([JSON.stringify(e.target.result, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '盘点数据.json';
+    a.click();
+  };
+}
+</script>
+
+</body>
+</html>
