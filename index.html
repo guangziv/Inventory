@@ -1,256 +1,231 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>光子盘点 · 微信专版</title>
+<meta charset="UTF-8">
+<title>光子盘点</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
 
-<!-- ZXing 扫码库 -->
-<script src="https://unpkg.com/@ericm/zing@0.0.14/dist/zing.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/file-saver/dist/FileSaver.min.js"></script>
 
 <style>
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  padding: 12px;
-  background: #f4f4f4;
-  margin: 0;
-}
-h2, h3 { margin: 10px 0; }
-button {
-  width: 100%;
-  padding: 14px;
-  margin: 8px 0;
-  font-size: 16px;
-  border-radius: 8px;
-  border: none;
-  background: #07c160; /* 微信绿 */
-  color: #fff;
-  box-sizing: border-box;
-}
-button.secondary {
-  background: #1677ff;
-}
-input {
-  width: 100%;
-  padding: 12px;
-  margin: 6px 0;
-  font-size: 16px;
-  border-radius: 6px;
-  border: 1px solid #ddd;
-  box-sizing: border-box;
-}
-video {
-  width: 100%;
-  border-radius: 8px;
-  display: none; /* 默认隐藏 */
-  background: #000;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #fff;
-  font-size: 13px;
-  margin-top: 10px;
-}
-th, td {
-  border: 1px solid #eee;
-  padding: 6px;
-  text-align: center;
-}
-img {
-  max-width: 80px;
-  border-radius: 4px;
-}
-#result { display: none; margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px; }
-#statusTip {
-  padding: 10px;
-  margin-bottom: 10px;
-  background: #fff3cd;
-  color: #856404;
-  border-radius: 6px;
-  font-size: 14px;
-}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f5f5f5;margin:0;touch-action:manipulation}
+h3{text-align:center;font-size:24px;font-weight:bold;margin:10px 0}
+#cameraWrap{position:relative;width:100vw;height:50vh;background:#000;overflow:hidden}
+#video{width:100%;height:100%;object-fit:cover;transform-origin:center}
+.focus-frame{position:absolute;top:50%;left:50%;width:200px;height:200px;transform:translate(-50%,-50%);border:2.5px solid #00ffcc;border-radius:10px;animation:breath 1.5s ease-in-out infinite;pointer-events:none}
+@keyframes breath{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}50%{opacity:0.6;transform:translate(-50%,-50%) scale(1.05)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+#captureBtn{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.95);border:4px solid #007bff;font-size:30px;display:flex;align-items:center;justify-content:center;padding:0}
+.toolbar{display:flex;justify-content:space-around;padding:10px 5px;background:#111;position:sticky;bottom:0;z-index:100}
+.toolbar button{background:#007bff;border:none;color:#fff;padding:12px 16px;border-radius:8px;font-size:14px;flex:1;margin:0 4px;max-width:120px}
+.modal-mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);justify-content:center;align-items:center;z-index:999}
+.modal{background:#fff;padding:15px;border-radius:10px;width:92%;max-width:420px;max-height:85vh;overflow-y:auto}
+.form-group{margin-bottom:12px}
+.form-group label{font-size:14px;color:#666;display:block;margin-bottom:4px}
+.form-group input,.form-group select{width:100%;padding:12px;box-sizing:border-box;border:1px solid #ddd;border-radius:4px;font-size:16px}
+#previewImg{width:100%;max-height:160px;object-fit:contain;margin-bottom:10px;border-radius:6px;border:1px solid #ddd}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px;background:#fff}
+th,td{border:1px solid #ddd;padding:6px;text-align:center}
+th{background:#f2f2f2}
+.thumbnail{width:50px;height:50px;object-fit:cover;border-radius:4px;cursor:pointer}
+#imgModal img{width:100%}
+#list{display:none;padding:10px}
 </style>
 </head>
 
 <body>
+<h3>📦 光子盘点</h3>
 
-<h2>📦 光子盘点工具</h2>
-
-<!-- 微信环境提示 -->
-<div id="statusTip">
-  ⚠️ 若无法唤起摄像头，请点击右上角菜单，选择「在浏览器中打开」
+<div id="cameraWrap">
+  <video id="video" autoplay playsinline></video>
+  <div class="focus-frame"></div>
+  <button id="captureBtn">📸</button>
 </div>
 
-<button onclick="startScan()">📷 扫码</button>
-<video id="video"></video>
-
-<div id="result">
-  <p><b>SKU：</b><span id="sku"></span></p>
-  <input type="number" id="qty" placeholder="请输入实盘数量" />
-  <input type="file" accept="image/*" capture="environment" id="photo" />
-  <img id="preview" />
-  <button class="secondary" onclick="save()">💾 保存</button>
+<div class="toolbar">
+  <button onclick="rotate()">🔄 旋转</button>
+  <button id="toggleListBtn" onclick="toggleList()">📋 清单</button>
+  <button onclick="exportPackage()">📤 导出</button>
+  <button onclick="clearAll()">🗑️ 清空</button>
 </div>
 
-<h3>盘点记录</h3>
-<button onclick="toggleTableView()">📊 表格视图</button>
-<button onclick="exportData()">⬇️ 导出 JSON</button>
-
-<table>
-  <thead>
-    <tr><th>SKU</th><th>数量</th><th>照片</th></tr>
-  </thead>
-  <tbody id="list"></tbody>
-</table>
-
-<div id="tableView" style="display:none;">
-  <table>
-    <thead>
-      <tr><th>SKU</th><th>数量</th><th>照片</th><th>操作</th></tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-  </table>
+<div class="modal-mask" id="formModal">
+  <div class="modal">
+    <h4>商品信息录入</h4>
+    <img id="previewImg">
+    <div class="form-group"><label>产品名称</label><input id="inp_name"></div>
+    <div class="form-group">
+      <label>规格</label>
+      <select id="inp_spec">
+        <option value="1.8*2.0">1.8 × 2.0</option>
+        <option value="1.5*2.0">1.5 × 2.0</option>
+        <option value="custom">定制</option>
+      </select>
+    </div>
+    <div class="form-group" id="customSpecGroup" style="display:none;">
+      <label>自定义规格</label>
+      <input id="inp_custom_spec">
+    </div>
+    <div class="form-group"><label>颜色</label><input id="inp_color"></div>
+    <div class="form-group"><label>数量</label><input id="inp_qty" type="number" value="1"></div>
+    <div class="form-group"><label>备注</label><input id="inp_note"></div>
+    <button onclick="saveRecord()" style="width:100%;padding:12px">✅ 保存</button>
+  </div>
 </div>
+
+<div class="modal-mask" id="imgModal" onclick="this.style.display='none'">
+  <img id="bigImg">
+</div>
+
+<div id="list"></div>
 
 <script>
-let currentSKU = '';
-let codeReader = null;
-const dbName = 'inventoryDB';
-let db;
+let records = JSON.parse(localStorage.getItem("inventory") || "[]");
+let tempImage = "", scale = 1, offsetX = 0, offsetY = 0, rotation = 0, lastDist = 0, listVisible = false;
+const video = document.getElementById("video");
+const wrap = document.getElementById("cameraWrap");
 
-/* ===== IndexedDB 初始化 ===== */
-const req = indexedDB.open(dbName, 1);
-req.onupgradeneeded = e => {
-  db = e.target.result;
-  db.createObjectStore('records', { keyPath: 'sku' });
-};
-req.onsuccess = e => {
-  db = e.target.result;
-  loadList();
-};
+navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(s => video.srcObject = s);
 
-/* ===== 核心：扫码（微信兼容版） ===== */
-async function startScan() {
-  const video = document.getElementById('video');
-  
-  // 尝试主动请求摄像头权限（微信有时会在这里拦截）
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" } // 强制后置摄像头
-    });
-    
-    // 如果成功，交给 ZXing 处理
-    video.style.display = 'block';
-    video.srcObject = stream;
-    video.play();
+wrap.addEventListener("touchstart", e => {
+  if (e.touches.length === 2) lastDist = getDist(e.touches[0], e.touches[1]);
+});
 
-    codeReader = new ZXing.BrowserMultiFormatReader();
-    codeReader.decodeFromVideoElement(video, (result, err) => {
-      if (result) {
-        currentSKU = result.getText();
-        document.getElementById('sku').innerText = currentSKU;
-        document.getElementById('result').style.display = 'block';
-        document.getElementById('qty').focus();
-        stopScan();
-      }
-    });
-
-  } catch (error) {
-    console.error("摄像头调用失败:", error);
-    // 微信环境最常见的失败处理方式
-    alert('无法调用摄像头。\n请确认已允许权限，或点击右上角选择在浏览器中打开。');
-    video.style.display = 'none';
+wrap.addEventListener("touchmove", e => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    const d = getDist(e.touches[0], e.touches[1]);
+    scale *= d / lastDist;
+    scale = Math.max(0.5, Math.min(scale, 4));
+    lastDist = d;
   }
+  updateVideo();
+}, { passive: false });
+
+function updateVideo() {
+  video.style.transform = `translate(${offsetX}px,${offsetY}px) scale(${scale}) rotate(${rotation}deg)`;
 }
 
-function stopScan() {
-  const video = document.getElementById('video');
-  if (codeReader) codeReader.reset();
-  if (video.srcObject) {
-    video.srcObject.getTracks().forEach(track => track.stop());
-  }
-  video.style.display = 'none';
+function rotate() {
+  rotation = (rotation + 90) % 360;
+  updateVideo();
 }
 
-/* ===== 拍照压缩 ===== */
-document.getElementById('photo').onchange = e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const img = new Image();
-  img.onload = () => {
-    const canvas = document.createElement('canvas');
-    let w = img.width, h = img.height;
-    const MAX = 800;
-    if (w > h && w > MAX) { h *= MAX / w; w = MAX; }
-    else if (h > MAX) { w *= MAX / h; h = MAX; }
-    canvas.width = w; canvas.height = h;
-    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-    document.getElementById('preview').src = canvas.toDataURL('image/jpeg', 0.6);
-  };
-  img.src = URL.createObjectURL(file);
+document.getElementById("captureBtn").onclick = () => {
+  const c = document.createElement("canvas");
+  const ctx = c.getContext("2d");
+  c.width = video.videoWidth;
+  c.height = video.videoHeight;
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate(rotation * Math.PI / 180);
+  ctx.scale(scale, scale);
+  ctx.drawImage(video, -video.videoWidth / 2 + offsetX / scale, -video.videoHeight / 2 + offsetY / scale, video.videoWidth, video.videoHeight);
+  tempImage = c.toDataURL("image/jpeg", 0.9);
+  openForm();
 };
 
-/* ===== 保存 ===== */
-function save() {
-  const qty = document.getElementById('qty').value;
-  if (!currentSKU || !qty) { alert('请扫码并输入数量'); return; }
-  
-  const tx = db.transaction('records', 'readwrite');
-  tx.objectStore('records').put({
-    sku: currentSKU,
-    qty,
-    photo: document.getElementById('preview').src
+function getDist(a, b) {
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
+function openForm() {
+  document.getElementById("previewImg").src = tempImage;
+  document.getElementById("formModal").style.display = "flex";
+}
+
+document.getElementById("inp_spec").onchange = function () {
+  document.getElementById("customSpecGroup").style.display = this.value === "custom" ? "block" : "none";
+};
+
+function saveRecord() {
+  const name = document.getElementById("inp_name").value.trim();
+  if (!name) return alert("产品名称不能为空");
+  let spec = document.getElementById("inp_spec").value;
+  if (spec === "custom") spec = document.getElementById("inp_custom_spec").value.trim() || "定制";
+  records.push({
+    time: new Date().toLocaleString(),
+    name,
+    spec,
+    color: document.getElementById("inp_color").value.trim(),
+    qty: document.getElementById("inp_qty").value,
+    note: document.getElementById("inp_note").value.trim(),
+    image: tempImage
   });
-  tx.oncomplete = () => {
-    alert('保存成功');
-    document.getElementById('qty').value = '';
-    document.getElementById('preview').src = '';
-    document.getElementById('photo').value = '';
-    document.getElementById('result').style.display = 'none';
-    loadList();
-  };
+  localStorage.setItem("inventory", JSON.stringify(records));
+  document.getElementById("formModal").style.display = "none";
+  alert("保存成功！");
 }
 
-/* ===== 列表 & 表格 ===== */
-function loadList() {
-  if (!db) return;
-  const tx = db.transaction('records', 'readonly');
-  tx.objectStore('records').getAll().onsuccess = e => {
-    const data = e.target.result;
-    const list = document.getElementById('list');
-    const table = document.getElementById('tableBody');
-    list.innerHTML = ''; table.innerHTML = '';
-    data.forEach(r => {
-      list.innerHTML += `<tr><td>${r.sku}</td><td>${r.qty}</td><td><img src="${r.photo}"></td></tr>`;
-      table.innerHTML += `<tr><td>${r.sku}</td><td>${r.qty}</td><td><img src="${r.photo}"></td><td><button onclick="del('${r.sku}')">删除</button></td></tr>`;
-    });
-  };
+function viewImg(src) {
+  document.getElementById("bigImg").src = src;
+  document.getElementById("imgModal").style.display = "flex";
 }
 
-function del(sku) {
-  if (!confirm('删除 ' + sku + '？')) return;
-  const tx = db.transaction('records', 'readwrite');
-  tx.objectStore('records').delete(sku);
-  tx.oncomplete = loadList;
+function toggleList() {
+  listVisible = !listVisible;
+  document.getElementById("list").style.display = listVisible ? "block" : "none";
+  document.getElementById("toggleListBtn").innerText = listVisible ? "🙈 隐藏" : "📋 清单";
+  if (listVisible) renderList();
 }
 
-function toggleTableView() {
-  const v = document.getElementById('tableView');
-  v.style.display = v.style.display === 'none' ? 'block' : 'none';
+function renderList() {
+  if (!records.length) {
+    document.getElementById("list").innerHTML = "<p style='text-align:center;color:#999'>暂无数据</p>";
+    return;
+  }
+  let html = "<table><tr>" +
+    "<th style='width:50px;'>序号</th>" +
+    "<th style='width:130px;'>时间</th>" +
+    "<th>图片</th>" +
+    "<th>名称</th>" +
+    "<th>规格</th>" +
+    "<th>颜色</th>" +
+    "<th style='width:60px;'>数量</th>" +
+    "<th>备注</th>" +
+    "</tr>";
+  records.forEach((r, i) => {
+    html += `<tr>
+      <td style="width:50px;">${i + 1}</td>
+      <td style="width:130px;">${r.time}</td>
+      <td><img src="${r.image}" class="thumbnail" onclick="viewImg('${r.image}')"></td>
+      <td>${r.name}</td>
+      <td>${r.spec}</td>
+      <td>${r.color}</td>
+      <td style="width:60px;">${r.qty}</td>
+      <td>${r.note}</td>
+    </tr>`;
+  });
+  document.getElementById("list").innerHTML = html + "</table>";
 }
 
-function exportData() {
-  const tx = db.transaction('records', 'readonly');
-  tx.objectStore('records').getAll().onsuccess = e => {
-    const blob = new Blob([JSON.stringify(e.target.result, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = '盘点数据.json';
-    a.click();
-  };
+async function exportPackage() {
+  if (!records.length) return alert("暂无数据可导出");
+  const zip = new JSZip();
+  const imgFolder = zip.folder("images");
+  const wb = XLSX.utils.book_new();
+  wb.Props = { Title: "光子盘点", Author: "光子盘点系统" };
+  const ws = XLSX.utils.json_to_sheet([], { header: ["序号","时间","产品名称","规格","颜色","数量","备注","图片编号"] });
+  records.forEach((r, i) => {
+    const imgId = `IMG_${String(i + 1).padStart(4, "0")}`;
+    XLSX.utils.sheet_add_json(ws, [{ 序号: i + 1, 时间: r.time, 产品名称: r.name, 规格: r.spec, 颜色: r.color, 数量: r.qty, 备注: r.note, 图片编号: imgId }], { skipHeader: true, origin: i + 1 });
+    imgFolder.file(`${imgId}.jpg`, r.image.replace(/^data:image\/(png|jpeg);base64,/, ""), { base64: true });
+  });
+  XLSX.utils.book_append_sheet(wb, ws, "盘点数据");
+  const d = new Date();
+  const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  zip.file(`光子盘点_${dateStr}.xlsx`, XLSX.write(wb, { bookType: "xlsx", type: "array" }), { binary: true });
+  saveAs(await zip.generateAsync({ type: "blob" }), `光子盘点_${dateStr}.zip`);
+}
+
+function clearAll() {
+  if (confirm("确定清空所有数据？")) {
+    localStorage.removeItem("inventory");
+    records = [];
+    document.getElementById("list").innerHTML = "";
+    alert("已清空");
+  }
 }
 </script>
-
 </body>
 </html>
