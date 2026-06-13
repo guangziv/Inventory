@@ -1,1 +1,588 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>光子盘点</title><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"><script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jszip/dist/jszip.min.js"></script><script src="https://cdn.jsdelivr.net/npm/file-saver/dist/FileSaver.min.js"></script><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f5f5f5;margin:0;touch-action:none}h3{text-align:center;font-size:24px;font-weight:bold;margin:10px 0}#cameraWrap{position:relative;width:100vw;height:50vh;background:#000;overflow:hidden}#video{width:100%;height:100%;object-fit:cover;transform-origin:center}.focus-frame{position:absolute;top:50%;left:50%;width:200px;height:200px;transform:translate(-50%,-50%);border:2.5px solid #00ffcc;border-radius:10px;animation:breath 1.5s ease-in-out infinite}@keyframes breath{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}50%{opacity:0.6;transform:translate(-50%,-50%) scale(1.05)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}#captureBtn{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.95);border:4px solid #007bff;font-size:30px;display:flex;align-items:center;justify-content:center;padding:0}.toolbar{display:flex;justify-content:space-around;padding:10px 5px;background:#111;position:sticky;bottom:0;z-index:100}.toolbar button{border:none;color:#fff;padding:12px 16px;border-radius:8px;font-size:14px;flex:1;margin:0 4px;max-width:120px}.toolbar button:nth-child(1){background:#17a2b8}.toolbar button:nth-child(2){background:#28a745}.toolbar button:nth-child(3){background:#ffc107;color:#333}.toolbar button:nth-child(4){background:#fd7e14}.toolbar button:nth-child(5){background:#6f42c1}.toolbar button:nth-child(6){background:#20c997}.toolbar button:nth-child(7){background:#dc3545}#list{overflow-x:auto;padding:10px}#list table{width:100%;table-layout:auto}#list table th,#list table td{white-space:nowrap}#list table th:last-child,#list table td:last-child{position:sticky;right:0;background:#fff;width:70px}#list table td:last-child button{width:100%;padding:6px 0;font-size:16px}.modal-mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);justify-content:center;align-items:center;z-index:999}.modal{background:#fff;padding:10px;border-radius:10px;width:92%;max-width:420px;max-height:85vh;overflow-y:auto;border:1px solid #007bff}.modal h4{margin:5px 0 10px;font-size:17px;text-align:center;color:#007bff}.form-group{margin-bottom:8px}.form-group label{font-size:13px;color:#666;display:block;margin-bottom:3px}.form-group input,.form-group select{width:100%;padding:9px;box-sizing:border-box;border:1px solid #ddd;border-radius:4px;font-size:16px}.form-group input:focus,.form-group select:focus{outline:none;border-color:#007bff;box-shadow:0 0 0 2px rgba(0,123,255,.2)}#previewImg{max-width:100%;width:auto;max-height:140px;object-fit:contain;margin-bottom:8px;border-radius:6px;border:1px solid #ddd;display:block;margin-left:auto;margin-right:auto}.modal button[onclick="saveRecord()"]{width:100%;padding:14px 16px;margin-top:8px;background:linear-gradient(180deg,#28a745,#fd7e14);border:none;border-radius:10px;color:#fff;font-size:18px;font-weight:bold;box-shadow:0 4px 10px rgba(40,167,69,.35)}.modal button[onclick="saveRecord()"]:active{transform:scale(0.98)}table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px;background:#fff}th,td{border:1px solid #ddd;padding:6px;text-align:center}th{background:#f2f2f2}.thumbnail{width:50px;height:50px;object-fit:cover;border-radius:4px;cursor:pointer}#imgModal img{width:100%}.backup-item{padding:10px;border-bottom:1px solid #eee;cursor:pointer}.backup-item span{display:block;font-size:14px}.backup-item .time{font-weight:bold;color:#333}.backup-item .info{font-size:12px;color:#888}</style></head><body><h3>📦 光子盘点</h3><div id="cameraWrap"><video id="video" autoplay playsinline></video><div class="focus-frame"></div><button id="captureBtn">📸</button></div><div class="toolbar"><button onclick="rotate()">🔄 旋转</button><button id="toggleListBtn" onclick="toggleList()">📋 清单</button><button onclick="createBackup()">📥 备份</button><button onclick="exportPackage()">📤 导出</button><button onclick="openRestoreModal()">♻️ 恢复</button><button onclick="location.href='https://guangziv.github.io/Inventory/'">🔄 最新版</button><button onclick="clearAll()">🗑️ 清空</button></div><div class="modal-mask" id="formModal"><div class="modal"><h4>商品信息录入</h4><img id="previewImg"><div class="form-group"><label>产品名称</label><input id="inp_name"></div><div class="form-group"><label>产品类别</label><select id="inp_category"><option value="床架">床架</option><option value="床垫">床垫</option><option value="床头柜">床头柜</option><option value="沙发">沙发</option><option value="小件">小件</option></select></div><div class="form-group"><label>规格</label><select id="inp_spec"><option value="1.8*2.0">1.8 × 2.0</option><option value="1.5*2.0">1.5 × 2.0</option><option value="custom">定制</option></select></div><div class="form-group" id="customSpecGroup" style="display:none;"><label>自定义规格</label><input id="inp_custom_spec"></div><div class="form-group"><label>颜色</label><input id="inp_color"></div><div class="form-group"><label>数量</label><input id="inp_qty" type="number" value="1"></div><div class="form-group"><label>备注</label><input id="inp_note"></div><button onclick="saveRecord()">✅ 保存</button></div></div><div class="modal-mask" id="restoreModal"><div class="modal"><h4>恢复备份</h4><div id="backupListContainer" style="max-height:300px;overflow-y:auto;"></div><button onclick="closeRestoreModal()" style="width:100%;padding:10px;margin-top:10px;background:#ccc;border:none;border-radius:6px;">关闭</button></div></div><div class="modal-mask" id="imgModal" onclick="this.style.display='none'"><img id="bigImg"></div><div id="list"></div><script>let records=JSON.parse(localStorage.getItem("inventory")||"[]"),tempImage="",scale=1,offsetX=0,offsetY=0,rotation=0,lastDist=0,lastX=0,lastY=0,rafId=null,listVisible=false;const MIN_SCALE=0.5,MAX_SCALE=4,MAX_BACKUPS=5,video=document.getElementById("video"),wrap=document.getElementById("cameraWrap");navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}).then(s=>video.srcObject=s);function applyTransform(){video.style.transform=`translate(${offsetX}px,${offsetY}px) scale(${scale}) rotate(${rotation}deg)`}function requestUpdate(){if(rafId)return;rafId=requestAnimationFrame(()=>{applyTransform();rafId=null})}wrap.addEventListener("touchstart",e=>{if(e.touches.length===1){lastX=e.touches[0].clientX;lastY=e.touches[0].clientY}else if(e.touches.length===2){lastDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)}});wrap.addEventListener("touchmove",e=>{e.preventDefault();if(e.touches.length===1){const dx=e.touches[0].clientX-lastX,dy=e.touches[0].clientY-lastY;offsetX+=dx;offsetY+=dy;lastX=e.touches[0].clientX;lastY=e.touches[0].clientY}if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);scale*=d/lastDist;scale=Math.max(MIN_SCALE,Math.min(scale,MAX_SCALE));lastDist=d}requestUpdate()},{passive:false});function rotate(){rotation=(rotation+90)%360;requestUpdate()}document.getElementById("captureBtn").onclick=()=>{const c=document.createElement("canvas"),ctx=c.getContext("2d");c.width=video.videoWidth;c.height=video.videoHeight;ctx.translate(c.width/2,c.height/2);ctx.rotate(rotation*Math.PI/180);ctx.scale(scale,scale);ctx.drawImage(video,-video.videoWidth/2+offsetX/scale,-video.videoHeight/2+offsetY/scale,video.videoWidth,video.videoHeight);tempImage=c.toDataURL("image/jpeg",0.9);openForm()};function openForm(){document.getElementById("previewImg").src=tempImage;document.getElementById("formModal").style.display="flex"}document.getElementById("inp_category").onchange=function(){const s=document.getElementById("inp_spec"),g=document.getElementById("customSpecGroup");if(["床头柜","沙发","小件"].includes(this.value)){s.value="custom";g.style.display="block";document.getElementById("inp_custom_spec").focus()}else g.style.display=s.value==="custom"?"block":"none"};document.getElementById("inp_spec").onchange=function(){document.getElementById("customSpecGroup").style.display=this.value==="custom"?"block":"none"};function saveRecord(){const n=document.getElementById("inp_name").value.trim();if(!n)return alert("产品名称不能为空");let s=document.getElementById("inp_spec").value;s=s==="custom"?document.getElementById("inp_custom_spec").value.trim()||"定制":s;records.push({time:new Date().toLocaleString(),name:n,category:document.getElementById("inp_category").value,spec:s,color:document.getElementById("inp_color").value.trim(),qty:document.getElementById("inp_qty").value,note:document.getElementById("inp_note").value.trim(),image:tempImage});localStorage.setItem("inventory",JSON.stringify(records));document.getElementById("formModal").style.display="none";alert("保存成功！")}function viewImg(src){document.getElementById("bigImg").src=src;document.getElementById("imgModal").style.display="flex"}function toggleList(){listVisible=!listVisible;document.getElementById("list").style.display=listVisible?"block":"none";document.getElementById("toggleListBtn").innerText=listVisible?"🙈 隐藏":"📋 清单";if(listVisible)renderList()}function renderList(){if(!records.length){document.getElementById("list").innerHTML="<p style='text-align:center;color:#999'>暂无数据</p>";return}let h="<table><tr><th>序号</th><th>时间</th><th>类别</th><th>图片</th><th>名称</th><th>规格</th><th>颜色</th><th>数量</th><th>备注</th><th>操作</th></tr>";records.forEach((r,i)=>h+=`<tr><td>${i+1}</td><td>${r.time}</td><td>${r.category}</td><td><img src="${r.image}" class="thumbnail" onclick="viewImg('${r.image}')"></td><td>${r.name}</td><td>${r.spec}</td><td>${r.color}</td><td>${r.qty}</td><td>${r.note}</td><td><button onclick="deleteRecord(${i})" style="background:#dc3545;color:#fff;border:none;border-radius:4px;">🗑️</button></td></tr>`);document.getElementById("list").innerHTML=h+"</table>"}function deleteRecord(i){if(!confirm("确定删除这条记录吗？"))return;records.splice(i,1);localStorage.setItem("inventory",JSON.stringify(records));renderList()}async function exportPackage(){if(!records.length)return alert("暂无数据可导出");const z=new JSZip(),wb=XLSX.utils.book_new();wb.Props={Title:"光子盘点",Author:"光子盘点系统"};const ws=XLSX.utils.json_to_sheet([],{header:["序号","时间","产品类别","产品名称","规格","颜色","数量","备注","图片编号"]});records.forEach((r,i)=>{const id=`IMG_${String(i+1).padStart(4,"0")}`;XLSX.utils.sheet_add_json(ws,[{序号:i+1,时间:r.time,产品类别:r.category,产品名称:r.name,规格:r.spec,颜色:r.color,数量:r.qty,备注:r.note,图片编号:id}],{skipHeader:true,origin:i+1});z.folder("images").file(`${id}.jpg`,r.image.replace(/^data:image\/(png|jpeg);base64,/,""),{base64:true})});XLSX.utils.book_append_sheet(wb,ws,"盘点数据");const d=new Date(),ds=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;z.file(`光子盘点_${ds}.xlsx`,XLSX.write(wb,{bookType:"xlsx",type:"array"}),{binary:true});saveAs(await z.generateAsync({type:"blob"}),`光子盘点_${ds}.zip`)}function getBackupList(){return JSON.parse(localStorage.getItem("backup_list")||"[]")}function saveBackupList(l){localStorage.setItem("backup_list",JSON.stringify(l))}function createBackup(){if(!records.length)return alert("暂无数据可备份");const t=new Date().getTime(),k=`inventory_backup_${t}`,d={records,createdAt:new Date().toLocaleString()};localStorage.setItem(k,JSON.stringify(d));let l=getBackupList();l.unshift({key:k,time:d.createdAt,count:records.length});if(l.length>MAX_BACKUPS){const r=l.pop();localStorage.removeItem(r.key)}saveBackupList(l);alert("备份成功！")}function openRestoreModal(){const c=document.getElementById("backupListContainer"),l=getBackupList();c.innerHTML=l.length?l.map(i=>`<div class="backup-item" onclick="restoreFromBackup('${i.key}')"><span class="time">📅 ${i.time}</span><span class="info">共 ${i.count} 条记录</span></div>`).join(""):"<p style='text-align:center;color:#999;'>暂无备份记录</p>";document.getElementById("restoreModal").style.display="flex"}function closeRestoreModal(){document.getElementById("restoreModal").style.display="none"}function restoreFromBackup(k){if(!confirm("确定要恢复此备份吗？当前未保存的数据将会丢失！"))return;try{const d=JSON.parse(localStorage.getItem(k));if(d&&d.records){records=d.records;localStorage.setItem("inventory",JSON.stringify(records));closeRestoreModal();alert("数据恢复成功！");if(listVisible)renderList()}else throw new Error("Invalid backup data")}catch(e){alert("恢复失败，备份数据可能已损坏。")}}function clearAll(){if(confirm("确定清空所有数据？")){localStorage.removeItem("inventory");records=[];document.getElementById("list").innerHTML="";alert("已清空")}}</script></body></html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>光子盘点</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/file-saver/dist/FileSaver.min.js"></script>
+
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f5f5f5;margin:0;touch-action:none}
+h3{text-align:center;font-size:24px;font-weight:bold;margin:10px 0}
+#cameraWrap{position:relative;width:100vw;height:50vh;background:#000;overflow:hidden}
+#video{
+  width:100%;height:100%;object-fit:cover;
+  transform-origin:center;will-change:transform;transform:translateZ(0)
+}
+.focus-frame{position:absolute;top:50%;left:50%;width:200px;height:200px;transform:translate(-50%,-50%);border:2.5px solid #00ffcc;border-radius:10px;animation:breath 1.5s ease-in-out infinite}
+@keyframes breath{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}50%{opacity:0.6;transform:translate(-50%,-50%) scale(1.05)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+#captureBtn{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.95);border:4px solid #007bff;font-size:30px;display:flex;align-items:center;justify-content:center;padding:0}
+
+.toolbar{display:flex;justify-content:space-around;padding:10px 5px;background:#111;position:sticky;bottom:0;z-index:100}
+.toolbar button{border:none;color:#fff;padding:12px 16px;border-radius:8px;font-size:14px;flex:1;margin:0 4px;max-width:120px}
+.toolbar button:nth-child(1){background:#17a2b8}
+.toolbar button:nth-child(2){background:#28a745}
+.toolbar button:nth-child(3){background:#ffc107;color:#333}
+.toolbar button:nth-child(4){background:#fd7e14}
+.toolbar button:nth-child(5){background:#6f42c1}
+.toolbar button:nth-child(6){background:#20c997}
+.toolbar button:nth-child(7){background:#dc3545}
+
+#list{overflow-x:auto;padding:10px}
+#list table{width:100%;table-layout:auto}
+#list table th,#list table td{white-space:nowrap}
+#list table th:last-child,#list table td:last-child{position:sticky;right:0;background:#fff;width:70px;min-width:70px}
+#list table td:last-child button{width:100%;padding:6px 0;font-size:16px}
+#list table tfoot td{position:sticky;bottom:0;background:#fff;font-weight:bold;border-top:2px solid #007bff;font-size:14px;z-index:2}
+
+.modal-mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);justify-content:center;align-items:center;z-index:999}
+.modal{background:#fff;padding:10px;border-radius:10px;width:92%;max-width:420px;max-height:88vh;overflow-y:auto;border:1px solid #007bff}
+.modal h4{margin:5px 0 10px;font-size:17px;text-align:center;color:#007bff}
+.form-group{margin-bottom:8px}
+.form-group label{font-size:13px;color:#666;display:block;margin-bottom:3px}
+.form-group input,.form-group select{width:100%;padding:9px;box-sizing:border-box;border:1px solid #ddd;border-radius:4px;font-size:16px}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:#007bff;box-shadow:0 0 0 2px rgba(0,123,255,.2)}
+#previewImg{max-width:100%;width:auto;max-height:140px;object-fit:contain;margin-bottom:8px;border-radius:6px;border:1px solid #ddd;display:block;margin-left:auto;margin-right:auto}
+.modal button[onclick="saveRecord()"]{width:100%;padding:14px 16px;margin-top:8px;background:linear-gradient(180deg,#28a745,#fd7e14);border:none;border-radius:10px;color:#fff;font-size:18px;font-weight:bold;box-shadow:0 4px 10px rgba(40,167,69,.35)}
+.modal button[onclick="saveRecord()"]:active{transform:scale(0.98)}
+
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px;background:#fff}
+th,td{border:1px solid #ddd;padding:6px;text-align:center}
+th{background:#f2f2f2}
+.thumbnail{width:50px;height:50px;object-fit:cover;border-radius:4px;cursor:pointer}
+</style>
+</head>
+
+<body>
+<h3>📦 光子盘点</h3>
+
+<div id="cameraWrap">
+  <video id="video" autoplay playsinline></video>
+  <div class="focus-frame"></div>
+  <button id="captureBtn">📸</button>
+</div>
+
+<div class="toolbar">
+  <button onclick="rotate()">🔄 旋转</button>
+  <button id="toggleListBtn" onclick="toggleList()">📋 清单</button>
+  <button onclick="createBackup()">📥 备份</button>
+  <button onclick="exportPackage()">📤 导出</button>
+  <button onclick="openRestoreModal()">♻️ 恢复</button>
+  <button onclick="location.href='https://guangziv.github.io/Inventory/'">🔄 最新版</button>
+  <button onclick="clearAll()">🗑️ 清空</button>
+</div>
+
+<div class="modal-mask" id="formModal">
+  <div class="modal">
+    <h4>商品信息录入</h4>
+    <img id="previewImg">
+    <div class="form-group"><label>产品名称</label><input id="inp_name"></div>
+    <div class="form-group">
+      <label>产品类别</label>
+      <select id="inp_category">
+        <option value="床架">床架</option>
+        <option value="床垫">床垫</option>
+        <option value="床头柜">床头柜</option>
+        <option value="沙发">沙发</option>
+        <option value="小件">小件</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>规格</label>
+      <select id="inp_spec">
+        <option value="1.8*2.0">1.8 × 2.0</option>
+        <option value="1.5*2.0">1.5 × 2.0</option>
+        <option value="custom">定制</option>
+      </select>
+    </div>
+    <div class="form-group" id="customSpecGroup" style="display:none;">
+      <label>自定义规格</label>
+      <input id="inp_custom_spec">
+    </div>
+    <div class="form-group"><label>颜色</label><input id="inp_color"></div>
+    <div class="form-group"><label>数量</label><input id="inp_qty" type="number" value="1"></div>
+    <div class="form-group"><label>备注</label><input id="inp_note"></div>
+    <button onclick="saveRecord()">✅ 保存</button>
+  </div>
+</div>
+
+<div class="modal-mask" id="restoreModal">
+  <div class="modal">
+    <h4>恢复备份</h4>
+    <div id="backupListContainer" style="max-height:300px;overflow-y:auto;"></div>
+    <button onclick="closeRestoreModal()" style="width:100%;padding:10px;margin-top:10px;background:#ccc;border:none;border-radius:6px;">关闭</button>
+  </div>
+</div>
+
+<div class="modal-mask" id="imgModal" onclick="this.style.display='none'">
+  <img id="bigImg">
+</div>
+
+<div id="list"></div>
+
+<script>
+let records = JSON.parse(localStorage.getItem("inventory") || "[]"),
+    tempImage = "",
+    scale = 1,
+    offsetX = 0,
+    offsetY = 0,
+    rotation = 0,
+    lastX = 0,
+    lastY = 0,
+    listVisible = false;
+
+const MIN_SCALE = 0.5,
+      MAX_SCALE = 4,
+      MAX_BACKUPS = 10,
+      CAPTURE_MAX_WIDTH = 800,
+      SAVE_QUALITY = 0.65,
+      EXPORT_QUALITY = 0.65;
+
+const video = document.getElementById("video"),
+      wrap = document.getElementById("cameraWrap"),
+      captureBtn = document.getElementById("captureBtn");
+
+navigator.mediaDevices.getUserMedia({
+  video: {
+    facingMode: "environment",
+    width: { ideal: 1280 },
+    height: { ideal: 720 }
+  }
+}).then(s => video.srcObject = s);
+
+function applyTransform(){
+  video.style.transform =
+    `translate(${offsetX}px,${offsetY}px) scale(${scale}) rotate(${rotation}deg)`;
+}
+
+wrap.addEventListener("pointerdown", e=>{
+  if(e.touches && e.touches.length === 1){
+    lastX = e.touches[0].clientX;
+    lastY = e.touches[0].clientY;
+  } else if(!e.touches){
+    lastX = e.clientX;
+    lastY = e.clientY;
+  }
+});
+
+wrap.addEventListener("pointermove", e=>{
+  e.preventDefault();
+  if(e.touches && e.touches.length === 1){
+    const dx = e.touches[0].clientX - lastX;
+    const dy = e.touches[0].clientY - lastY;
+    offsetX += dx;
+    offsetY += dy;
+    lastX = e.touches[0].clientX;
+    lastY = e.touches[0].clientY;
+  } else if(!e.touches){
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    offsetX += dx;
+    offsetY += dy;
+    lastX = e.clientX;
+    lastY = e.clientY;
+  }
+}, { passive: false });
+
+wrap.addEventListener("pointerup", e=>{
+  requestAnimationFrame(applyTransform);
+});
+
+function rotate(){
+  rotation = (rotation + 90) % 360;
+  requestAnimationFrame(applyTransform);
+}
+
+captureBtn.onpointerdown = function(e){
+  e.preventDefault();
+  if(captureBtn.disabled) return;
+  captureBtn.disabled = true;
+
+  requestAnimationFrame(()=>{
+    const c = document.createElement("canvas");
+    const ctx = c.getContext("2d");
+
+    let width = video.videoWidth;
+    let height = video.videoHeight;
+    if(width > CAPTURE_MAX_WIDTH){
+      height = (CAPTURE_MAX_WIDTH / width) * height;
+      width = CAPTURE_MAX_WIDTH;
+    }
+
+    c.width = width;
+    c.height = height;
+
+    ctx.translate(c.width/2, c.height/2);
+    ctx.rotate(rotation * Math.PI / 180);
+    ctx.scale(scale, scale);
+    ctx.drawImage(
+      video,
+      -video.videoWidth/2 + offsetX/scale,
+      -video.videoHeight/2 + offsetY/scale,
+      video.videoWidth,
+      video.videoHeight
+    );
+
+    tempImage = c.toDataURL("image/jpeg", SAVE_QUALITY);
+
+    document.getElementById("previewImg").src = tempImage;
+    document.getElementById("formModal").style.display = "flex";
+    captureBtn.disabled = false;
+  });
+};
+
+document.getElementById("inp_category").onchange = function(){
+  const s = document.getElementById("inp_spec");
+  const g = document.getElementById("customSpecGroup");
+  if(["床头柜","沙发","小件"].includes(this.value)){
+    s.value = "custom";
+    g.style.display = "block";
+    document.getElementById("inp_custom_spec").focus();
+  } else {
+    g.style.display = s.value === "custom" ? "block" : "none";
+  }
+};
+
+document.getElementById("inp_spec").onchange = function(){
+  document.getElementById("customSpecGroup").style.display =
+    this.value === "custom" ? "block" : "none";
+};
+
+function saveRecord(){
+  const n = document.getElementById("inp_name").value.trim();
+  if(!n) return alert("产品名称不能为空");
+
+  let s = document.getElementById("inp_spec").value;
+  s = s === "custom"
+     ? document.getElementById("inp_custom_spec").value.trim() || "定制"
+     : s;
+
+  records.push({
+    time: new Date().toLocaleString(),
+    name: n,
+    category: document.getElementById("inp_category").value,
+    spec: s,
+    color: document.getElementById("inp_color").value.trim(),
+    qty: document.getElementById("inp_qty").value,
+    note: document.getElementById("inp_note").value.trim(),
+    image: tempImage
+  });
+
+  localStorage.setItem("inventory", JSON.stringify(records));
+  document.getElementById("formModal").style.display = "none";
+  alert("保存成功！");
+}
+
+function toggleList(){
+  listVisible = !listVisible;
+  document.getElementById("list").style.display = listVisible ? "block" : "none";
+  document.getElementById("toggleListBtn").innerText = listVisible ? "🙈 隐藏" : "📋 清单";
+  if(listVisible) renderList();
+}
+
+function renderList(){
+  if(!records.length){
+    document.getElementById("list").innerHTML = "<p style='text-align:center;color:#999'>暂无数据</p>";
+    return;
+  }
+
+  let h = "<table><tr><th>序号</th><th>时间</th><th>类别</th><th>图片</th><th>名称</th><th>规格</th><th>颜色</th><th>数量</th><th>备注</th><th>操作</th></tr>";
+
+  records.forEach((r,i)=>{
+    h += `<tr>
+      <td>${i+1}</td>
+      <td>${r.time}</td>
+      <td>${r.category}</td>
+      <td><img src="${r.image}" class="thumbnail" onclick="document.getElementById('bigImg').src='${r.image}';document.getElementById('imgModal').style.display='flex'"></td>
+      <td>${r.name}</td>
+      <td>${r.spec}</td>
+      <td>${r.color}</td>
+      <td>${r.qty}</td>
+      <td>${r.note}</td>
+      <td>
+        <button onclick="deleteRecord(${i})" style="background:#dc3545;color:#fff;border:none;border-radius:4px;">🗑️</button>
+      </td>
+    </tr>`;
+  });
+
+  const catMap = {};
+  records.forEach(r=>{
+    catMap[r.category] = (catMap[r.category]||0) + Number(r.qty||0);
+  });
+
+  let catRows = "";
+  Object.keys(catMap).forEach(cat=>{
+    catRows += `<tr><td colspan="7" style="text-align:right">${cat} 合计：</td><td>${catMap[cat]}</td><td colspan="2"></td></tr>`;
+  });
+
+  const total = records.reduce((s,r)=>s+Number(r.qty||0),0);
+
+  h += catRows +
+    `<tfoot>
+       <tr><td colspan="7" style="text-align:right">合计数量：</td><td>${total}</td><td colspan="2"></td></tr>
+     </tfoot>
+     </table>`;
+
+  document.getElementById("list").innerHTML = h;
+}
+
+function deleteRecord(i){
+  if(!confirm("确定删除这条记录吗？")) return;
+  records.splice(i,1);
+  localStorage.setItem("inventory", JSON.stringify(records));
+  renderList();
+}
+
+async function exportPackage(){
+  if(!records.length){
+    alert("❌ 导出失败：暂无数据可导出！");
+    return;
+  }
+
+  try {
+    const z = new JSZip();
+    const wb = XLSX.utils.book_new();
+    wb.Props = { Title:"光子盘点", Author:"光子盘点系统" };
+
+    const ws = XLSX.utils.json_to_sheet([], {
+      header: ["序号","时间","产品类别","产品名称","规格","颜色","数量","备注","图片编号"]
+    });
+
+    records.forEach((r,i)=>{
+      const id = `IMG_${String(i+1).padStart(4,"0")}`;
+      XLSX.utils.sheet_add_json(ws, [{
+        序号: i+1,
+        时间: r.time,
+        产品类别: r.category,
+        产品名称: r.name,
+        规格: r.spec,
+        颜色: r.color,
+        数量: r.qty,
+        备注: r.note,
+        图片编号: id
+      }], { skipHeader: true, origin: i+1 });
+
+      const img = new Image();
+      img.src = r.image;
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0, img.width, img.height);
+
+      z.folder("images").file(
+        `${id}.jpg`,
+        canvas.toDataURL("image/jpeg", EXPORT_QUALITY).replace(/^data:image\/jpeg;base64,/, ""),
+        { base64: true }
+      );
+    });
+
+    const catMap = {};
+    records.forEach(r=>{
+      catMap[r.category] = (catMap[r.category]||0) + Number(r.qty||0);
+    });
+    Object.keys(catMap).forEach(cat=>{
+      XLSX.utils.sheet_add_json(ws, [{
+        序号: "",
+        时间: "",
+        产品类别: cat,
+        产品名称: "类别合计",
+        规格: "",
+        颜色: "",
+        数量: catMap[cat],
+        备注: "",
+        图片编号: ""
+      }], { skipHeader: true, origin: -1 });
+    });
+    const total = records.reduce((s,r)=>s+Number(r.qty||0),0);
+    XLSX.utils.sheet_add_json(ws, [{
+      序号: "",
+      时间: "",
+      产品类别: "总计",
+      产品名称: "合计数量",
+      规格: "",
+      颜色: "",
+      数量: total,
+      备注: "",
+      图片编号: ""
+    }], { skipHeader: true, origin: -1 });
+
+    XLSX.utils.book_append_sheet(wb, ws, "盘点数据");
+
+    const d = new Date();
+    const ds = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+    
+    z.file(
+      `光子盘点_${ds}.xlsx`,
+      XLSX.write(wb, { bookType:"xlsx", type:"array" }),
+      { binary: true }
+    );
+
+    await saveAs(
+      await z.generateAsync({ type:"blob", compression:"STORE" }),
+      `光子盘点_${ds}.zip`
+    );
+    alert("✅ 导出成功！");
+  } catch (e) {
+    if (e.message && e.message.includes("JSZip")) {
+      alert("❌ 导出失败：压缩包生成失败，请稍后重试。");
+    } else {
+      alert("❌ 导出失败：文件下载失败，请检查浏览器设置或重试。");
+    }
+    console.error(e);
+  }
+}
+
+function getBackupList(){
+  return JSON.parse(localStorage.getItem("backup_list") || "[]");
+}
+function saveBackupList(l){
+  localStorage.setItem("backup_list", JSON.stringify(l));
+}
+
+function createBackup(){
+  if(!records.length){
+    alert("❌ 备份失败：暂无数据可备份！");
+    return;
+  }
+
+  let backupData;
+  try {
+    backupData = JSON.stringify({records, createdAt: new Date().toLocaleString()});
+  } catch (e) {
+    alert("❌ 备份失败：数据格式错误，无法序列化。请尝试清空数据后重新录入。");
+    console.error(e);
+    return;
+  }
+
+  const t = Date.now(), k = `inventory_backup_${t}`;
+
+  try {
+    localStorage.setItem(k, backupData);
+  } catch (e) {
+    if (e.name === 'QuotaExceededError' || e.code === 22) {
+      alert("❌ 备份失败：浏览器本地存储空间已满！\n请删除部分旧备份或清理浏览器缓存后再试。");
+    } else {
+      alert(`❌ 备份失败：发生未知错误 (${e.name})。`);
+    }
+    console.error(e);
+    return;
+  }
+
+  let l=getBackupList();
+  l.unshift({key:k,time:new Date().toLocaleString(),count:records.length,locked:false});
+  while(l.length>MAX_BACKUPS){
+    const r=l.find(i=>!i.locked);
+    if(!r) break;
+    localStorage.removeItem(r.key);
+    l=l.filter(i=>i.key!==r.key);
+  }
+  saveBackupList(l);
+  alert("✅ 备份成功！");
+}
+
+function openRestoreModal(){
+  const c = document.getElementById("backupListContainer");
+  let l = getBackupList();
+
+  if(!l.length){
+    c.innerHTML = "<p style='text-align:center;color:#999;'>暂无备份记录</p>";
+    document.getElementById("restoreModal").style.display = "flex";
+    return;
+  }
+
+  l.sort((a,b)=>(a.locked&&!b.locked)?-1:(!a.locked&&b.locked)?1:new Date(b.time)-new Date(a.time));
+
+  c.innerHTML = l.map(i => `
+    <div style="background:${i.locked?'#eef6ff':'#fff'};padding:6px 8px;border-bottom:1px solid #eee;font-size:13px;">
+      <div onclick="restoreFromBackup('${i.key}')" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <span style="font-weight:bold; color:#333; font-size:13px;">📅 ${i.time}</span>
+        <span style="color:#888; font-size:12px;">${i.count} 条</span>
+      </div>
+      <div style="display:flex; gap:6px; margin-top:4px;">
+        <button onclick="toggleLockBackup('${i.key}')"
+          style="flex:1; padding:5px 0; font-size:12px; border:none; border-radius:4px; ${i.locked?'background:#6c757d':'background:#17a2b8'}; color:#fff;">
+          ${i.locked?'🔒 已锁':'🔓 锁定'}
+        </button>
+        <button onclick="deleteBackup('${i.key}')"
+          style="flex:1; padding:5px 0; font-size:12px; background:#dc3545; color:#fff; border:none; border-radius:4px;">
+          ❌ 删除
+        </button>
+      </div>
+    </div>
+  `).join("");
+
+  document.getElementById("restoreModal").style.display = "flex";
+}
+
+function closeRestoreModal(){
+  document.getElementById("restoreModal").style.display = "none";
+}
+
+function restoreFromBackup(key){
+  if(!confirm("确定要恢复此备份吗？当前未保存的数据将会丢失！")) return;
+  try{
+    const d = JSON.parse(localStorage.getItem(key));
+    if(d && d.records){
+      records = d.records;
+      localStorage.setItem("inventory", JSON.stringify(records));
+      closeRestoreModal();
+      alert("数据恢复成功！");
+      if(listVisible) renderList();
+    } else {
+      throw new Error("Invalid backup data");
+    }
+  } catch(e){
+    alert("恢复失败，备份数据可能已损坏。");
+  }
+}
+
+function toggleLockBackup(key){
+  let list = getBackupList();
+  const item = list.find(i => i.key === key);
+  if(!item) return;
+
+  item.locked = !item.locked;
+  saveBackupList(list);
+  openRestoreModal();
+}
+
+function deleteBackup(key){
+  let list = getBackupList();
+  const item = list.find(i => i.key === key);
+
+  if(item?.locked){
+    alert("该备份已锁定，无法删除！");
+    return;
+  }
+
+  if(!confirm("确定删除这条备份吗？删除后不可恢复！")) return;
+
+  localStorage.removeItem(key);
+  list = list.filter(i => i.key !== key);
+  saveBackupList(list);
+
+  alert("备份已删除！");
+  openRestoreModal();
+}
+
+function clearAll(){
+  if(confirm("确定清空所有数据？")){
+    localStorage.removeItem("inventory");
+    records = [];
+    document.getElementById("list").innerHTML = "";
+    alert("已清空");
+  }
+}
+
+if(!localStorage.getItem("inventory")){
+  alert("欢迎使用光子盘点！请先点击 📸 拍照，再填写信息保存。");
+}
+</script>
+</body>
+</html>
